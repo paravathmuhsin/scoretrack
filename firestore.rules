@@ -1,0 +1,170 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function authed() {
+      return request.auth != null;
+    }
+
+    /** Read parent match doc — use only under matches/{mid}/… subpaths (not for listing matches). */
+    function matchData(mid) {
+      return get(/databases/$(database)/documents/matches/$(mid)).data;
+    }
+
+    /** Public score/events can be read without auth when the match is public. */
+    function canAccessMatchSubcollection(mid) {
+      return exists(/databases/$(database)/documents/matches/$(mid))
+        && (
+          matchData(mid).isPublic == true
+          || (authed() && matchData(mid).createdBy == request.auth.uid)
+        );
+    }
+
+    /** Signed-in user who created the match document. */
+    function matchCreator(mid) {
+      return authed()
+        && exists(/databases/$(database)/documents/matches/$(mid))
+        && matchData(mid).createdBy == request.auth.uid;
+    }
+
+    /** Tournament organiser (for cascade delete / listing linked matches). */
+    function tournamentOrganiserForMatch(mid) {
+      return authed()
+        && exists(/databases/$(database)/documents/matches/$(mid))
+        && matchData(mid).tournamentId != null
+        && exists(/databases/$(database)/documents/tournaments/$(matchData(mid).tournamentId))
+        && tournamentDoc(matchData(mid).tournamentId).data.createdBy == request.auth.uid;
+    }
+
+    /** Same as tournamentOrganiserForMatch but uses `resource` on the match document. */
+    function tournamentOrganiserReadsThisMatch() {
+      return authed()
+        && resource.data.tournamentId != null
+        && exists(/databases/$(database)/documents/tournaments/$(resource.data.tournamentId))
+        && tournamentDoc(resource.data.tournamentId).data.createdBy == request.auth.uid;
+    }
+
+    function tournamentDoc(tid) {
+      return get(/databases/$(database)/documents/tournaments/$(tid));
+    }
+
+    function tournamentExists(tid) {
+      return exists(/databases/$(database)/documents/tournaments/$(tid));
+    }
+
+    function tournamentOwner(tid) {
+      return authed()
+        && tournamentExists(tid)
+        && tournamentDoc(tid).data.createdBy == request.auth.uid;
+    }
+
+    function tournamentPublic(tid) {
+      return tournamentExists(tid)
+        && tournamentDoc(tid).data.isPublic == true;
+    }
+
+    /** teamCount is set only at create; updates must leave it unchanged (or absent on legacy docs). */
+    function tournamentTeamCountImmutable() {
+      return !resource.data.keys().hasAny(['teamCount'])
+        ? !request.resource.data.keys().hasAny(['teamCount'])
+        : request.resource.data.teamCount == resource.data.teamCount;
+    }
+
+    /** Squad doc must live under the organiser who links it into a tournament. */
+    function userTeamDocExistsFor(uid, teamId) {
+      return exists(/databases/$(database)/documents/users/$(uid)/teams/$(teamId));
+    }
+
+    match /users/{uid} {
+      allow read, write: if authed() && request.auth.uid == uid;
+
+      match /teams/{teamId} {
+        allow read, write: if authed() && request.auth.uid == uid;
+      }
+    }
+
+    /** Searchable display names for adding registered users to squads. */
+    match /directoryUsers/{uid} {
+      allow read: if authed();
+      allow create, update: if authed() && request.auth.uid == uid;
+      allow delete: if authed() && request.auth.uid == uid;
+    }
+
+    match /tournaments/{tid} {
+      allow read: if resource.data.isPublic == true
+        || (authed() && resource.data.createdBy == request.auth.uid);
+      allow create: if authed()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.teamCount is int
+        && request.resource.data.teamCount >= 2
+        && request.resource.data.teamCount <= 64;
+      allow update: if tournamentOwner(tid) && tournamentTeamCountImmutable();
+      allow delete: if tournamentOwner(tid);
+
+      match /linkedTeams/{linkId} {
+        allow read: if tournamentPublic(tid) || tournamentOwner(tid);
+        allow create: if tournamentOwner(tid)
+          && request.resource.data.userTeamId is string
+          && userTeamDocExistsFor(request.auth.uid, request.resource.data.userTeamId);
+        allow update, delete: if tournamentOwner(tid);
+      }
+
+      match /groups/{gid} {
+        allow read: if tournamentPublic(tid) || tournamentOwner(tid);
+        allow create, update, delete: if tournamentOwner(tid);
+      }
+
+      match /teams/{teamId} {
+        allow read: if tournamentPublic(tid) || tournamentOwner(tid)
+          || (authed() && resource.data.organiserUid == request.auth.uid);
+        allow create: if tournamentOwner(tid)
+          && request.resource.data.organiserUid == tournamentDoc(tid).data.createdBy;
+        allow update, delete: if tournamentOwner(tid)
+          || (authed() && resource.data.organiserUid == request.auth.uid);
+      }
+
+      match /standings/{docId} {
+        allow read: if tournamentPublic(tid) || tournamentOwner(tid);
+        allow write: if tournamentOwner(tid);
+      }
+
+      match /stats/{docId} {
+        allow read: if tournamentPublic(tid) || tournamentOwner(tid);
+        allow write: if tournamentOwner(tid);
+      }
+    }
+
+    match /matches/{mid} {
+      /**
+       * Public matches readable by anyone (for /live list & shared links).
+       * Private matches: creator, or tournament organiser for that match's tournament.
+       */
+      allow read: if resource.data.isPublic == true
+        || (authed() && resource.data.createdBy == request.auth.uid)
+        || tournamentOrganiserReadsThisMatch();
+
+      allow create: if authed() && request.resource.data.createdBy == request.auth.uid;
+
+      allow update: if authed() && resource.data.createdBy == request.auth.uid;
+
+      allow delete: if authed() && (
+        resource.data.createdBy == request.auth.uid
+        || (resource.data.tournamentId != null
+            && exists(/databases/$(database)/documents/tournaments/$(resource.data.tournamentId))
+            && tournamentDoc(resource.data.tournamentId).data.createdBy == request.auth.uid)
+      );
+
+      match /innings/{iid} {
+        allow read: if canAccessMatchSubcollection(mid) || tournamentOrganiserForMatch(mid);
+        allow create, update: if canAccessMatchSubcollection(mid);
+        allow delete: if matchCreator(mid) || tournamentOrganiserForMatch(mid);
+      }
+
+      match /events/{eid} {
+        allow read: if canAccessMatchSubcollection(mid) || tournamentOrganiserForMatch(mid);
+        allow create: if authed() && matchData(mid).createdBy == request.auth.uid;
+        allow update: if false;
+        allow delete: if matchCreator(mid) || tournamentOrganiserForMatch(mid);
+      }
+    }
+  }
+}
