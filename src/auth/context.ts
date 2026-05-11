@@ -7,9 +7,17 @@ export type AuthContextValue = {
   signIn: (email: string, password: string) => Promise<void>
   sendPasswordReset: (email: string) => Promise<void>
   signInWithGoogle: () => Promise<void>
-  signUp: (email: string, password: string, displayName: string, mobile: string) => Promise<void>
+  signUp: (
+    email: string,
+    password: string,
+    fullName: string,
+    displayName: string,
+    mobile: string,
+  ) => Promise<void>
   /** Update Firestore profile + public directory (name, mobile for search). */
-  updateProfileContact: (patch: { displayName?: string; mobile?: string }) => Promise<void>
+  updateProfileContact: (patch: { fullName?: string; displayName?: string; mobile?: string }) => Promise<void>
+  /** Writes current `users/{uid}` names onto `playerCareerStats` so `/player/:uid` works when logged out. */
+  syncCareerProfileMirror: () => Promise<void>
   logout: () => Promise<void>
 }
 

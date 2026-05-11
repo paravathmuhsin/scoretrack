@@ -1,10 +1,12 @@
 import {
   bowlingStatsPerInnings,
   currentInnings,
+  type InningsSnapshot,
   type ReplayConfig,
   type ReplayState,
   type ScoreEvent,
   symbolsThisOver,
+  oversProgressString,
   oversString,
 } from '../scoring/engine'
 import {
@@ -47,12 +49,13 @@ function teamAbbrevFromSnapshot(team: MatchDoc['home']): string {
 }
 
 function isWicketBallSymbol(sym: string): boolean {
-  if (sym === 'W') return true
+  if (sym === 'W' || sym === 'w') return true
+  if (/^\d+W$/i.test(sym)) return true
   return /^Wd\d*W$|^Nb\d*W$/.test(sym)
 }
 
 function ballCircleContent(sym: string): { wicket: boolean; label: string } {
-  if (isWicketBallSymbol(sym)) return { wicket: true, label: 'W' }
+  if (isWicketBallSymbol(sym)) return { wicket: true, label: sym.length <= 5 ? sym : sym.slice(0, 5) }
   return { wicket: false, label: sym.length <= 3 ? sym : sym.slice(0, 3) }
 }
 
@@ -80,6 +83,23 @@ function currentRunRate(innRuns: number, legalBalls: number, ballsPerOver: numbe
   return (innRuns / overs).toFixed(2)
 }
 
+/** Second-innings chase: runs still required for win vs balls left in the innings (overs cap). */
+function secondInningsChaseNavyLine(
+  state: ReplayState,
+  cfg: ReplayConfig,
+  inn: InningsSnapshot,
+): string | null {
+  if (inn.innings !== 2 || state.innings2 == null || state.matchComplete) return null
+  const target = state.innings1.runs + 1
+  const need = target - inn.runs
+  const cap = cfg.oversLimit * cfg.ballsPerOver
+  const ballsLeft = Math.max(0, cap - inn.legalBalls)
+  if (need <= 0) return null
+  const runWord = need === 1 ? 'RUN' : 'RUNS'
+  const ballWord = ballsLeft === 1 ? 'BALL' : 'BALLS'
+  return `${need} ${runWord} NEED ${ballsLeft} ${ballWord}`
+}
+
 type Props = {
   match: MatchDoc & { id: string }
   cfg: ReplayConfig
@@ -94,8 +114,8 @@ export function ObsScoreBar({ match, cfg, state, events }: Props) {
 
   const batSnap = batting === 'home' ? match.home : match.away
   const bowlSnap = fielding === 'home' ? match.home : match.away
-  const batAbbr = teamAbbrevFromSnapshot(batSnap)
-  const bowlAbbr = teamAbbrevFromSnapshot(bowlSnap)
+  const batShort = teamAbbrevFromSnapshot(batSnap)
+  const bowlShort = teamAbbrevFromSnapshot(bowlSnap)
 
   const strikerId = inn.strikerId
   const nonId = inn.nonStrikerId
@@ -119,8 +139,12 @@ export function ObsScoreBar({ match, cfg, state, events }: Props) {
   const syms = symbolsThisOver(cfg, events)
   const symsKey = syms.join('|')
 
-  const ballsScrollRef = useRef<HTMLDivElement>(null)
-  const [scrollFade, setScrollFade] = useState({ left: false, right: false })
+  const ballsWrapRef = useRef<HTMLDivElement>(null)
+  const ballsTrackRef = useRef<HTMLDivElement>(null)
+  const [ballsFit, setBallsFit] = useState<{ scale: number; wrapHeight: number }>({
+    scale: 1,
+    wrapHeight: 0,
+  })
   const [bowlerFlash, setBowlerFlash] = useState<ScoreBarBallCue | null>(null)
   const skipInitialCueRef = useRef(true)
   const prevBallSeqRef = useRef<number | null>(null)
@@ -173,43 +197,48 @@ export function ObsScoreBar({ match, cfg, state, events }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed off ball seq, not events reference churn
   }, [cfg, ballSeqEffective])
 
-  const updateScrollFade = useCallback(() => {
-    const el = ballsScrollRef.current
-    if (!el) {
-      setScrollFade({ left: false, right: false })
+  const updateBallsFit = useCallback(() => {
+    const wrap = ballsWrapRef.current
+    const track = ballsTrackRef.current
+    if (!wrap || !track) return
+    const w = wrap.clientWidth
+    const tw = track.scrollWidth
+    if (tw <= 0 || w <= 0) {
+      setBallsFit({ scale: 1, wrapHeight: track.offsetHeight })
       return
     }
-    const { scrollLeft, scrollWidth, clientWidth } = el
-    const maxScroll = scrollWidth - clientWidth
-    const slack = 4
-    setScrollFade({
-      left: scrollLeft > slack,
-      right: maxScroll > slack && scrollLeft < maxScroll - slack,
-    })
+    const scale = Math.min(1, w / tw)
+    const h = track.offsetHeight * scale
+    setBallsFit({ scale, wrapHeight: h })
   }, [])
 
   useLayoutEffect(() => {
     void symsKey
-    updateScrollFade()
-    const el = ballsScrollRef.current
-    if (!el) return
-    const ro = new ResizeObserver(() => updateScrollFade())
-    ro.observe(el)
-    el.addEventListener('scroll', updateScrollFade, { passive: true })
-    window.addEventListener('resize', updateScrollFade)
-    return () => {
-      ro.disconnect()
-      el.removeEventListener('scroll', updateScrollFade)
-      window.removeEventListener('resize', updateScrollFade)
-    }
-  }, [updateScrollFade, symsKey])
+    updateBallsFit()
+    const wrap = ballsWrapRef.current
+    const track = ballsTrackRef.current
+    if (!wrap || !track) return
+    const ro = new ResizeObserver(() => updateBallsFit())
+    ro.observe(wrap)
+    ro.observe(track)
+    return () => ro.disconnect()
+  }, [updateBallsFit, symsKey])
 
   const rr = currentRunRate(inn.runs, inn.legalBalls, cfg.ballsPerOver)
-  const oversDisp = `${oversString(inn.legalBalls, cfg.ballsPerOver)}/${cfg.oversLimit}`
+  const oversDisp = oversProgressString(inn.legalBalls, cfg.ballsPerOver, cfg.oversLimit)
+  const navyChaseLine = secondInningsChaseNavyLine(state, cfg, inn)
+
+  const pinkAria = `${batShort}, ${inn.runs} for ${inn.wickets}`
 
   return (
     <div className="obs-score-bar" role="status" aria-live="polite">
-      <div className="obs-score-bar__segment obs-score-bar__abbr">{batAbbr}</div>
+      <div
+        className="obs-score-bar__segment obs-score-bar__abbr obs-score-bar__abbr--batting"
+        title={batSnap.name.trim() || undefined}
+        aria-label={`Batting team: ${batSnap.name.trim() || batShort}`}
+      >
+        {batShort}
+      </div>
 
       <div className="obs-score-bar__segment obs-score-bar__batters">
         <div className="obs-batter-row">
@@ -238,16 +267,28 @@ export function ObsScoreBar({ match, cfg, state, events }: Props) {
 
       <div className="obs-score-bar__center">
         <div className="obs-score-bar__center-split">
-          <div className="obs-score-bar__pink">
-            <span className="obs-score-bar__pink-abbr">{batAbbr}</span>{' '}
-            <span className="obs-score-bar__pink-score">
-              {inn.runs}/{inn.wickets}
+          <div className="obs-score-bar__pink" aria-label={pinkAria}>
+            <span className="obs-score-bar__pink-score-group">
+              <span
+                className="obs-score-bar__pink-bat"
+                title={batSnap.name.trim() || undefined}
+              >
+                {batShort}
+              </span>
+              <span className="obs-score-bar__pink-score">
+                {inn.runs} - {inn.wickets}
+              </span>
+              {inn.innings === 2 ? (
+                <span className="obs-score-bar__pink-target">
+                  (T: {state.innings1.runs + 1})
+                </span>
+              ) : null}
             </span>
           </div>
           <div className="obs-score-bar__cyan">{oversDisp}</div>
         </div>
         <div className="obs-score-bar__navy">
-          RUN RATE {rr}
+          {navyChaseLine ?? `RUN RATE ${rr}`}
         </div>
       </div>
 
@@ -262,35 +303,33 @@ export function ObsScoreBar({ match, cfg, state, events }: Props) {
               <span className="obs-bowler-ov">{bowlerOvers}</span>
             </span>
           </div>
-          <div className="obs-bowler-balls-wrap">
+          <div
+            ref={ballsWrapRef}
+            className="obs-bowler-balls-wrap"
+            style={
+              ballsFit.wrapHeight > 0
+                ? { height: `${ballsFit.wrapHeight}px` }
+                : undefined
+            }
+          >
             <div
-              ref={ballsScrollRef}
-              className="obs-bowler-balls"
-              role="group"
-              aria-label="This over — scroll sideways for more deliveries"
-              tabIndex={scrollFade.left || scrollFade.right ? 0 : undefined}
+              className="obs-bowler-balls-scale"
+              style={{
+                transform: `scale(${ballsFit.scale})`,
+                transformOrigin: 'left top',
+              }}
             >
-              {syms.map((sym, i) => {
-                const { label } = ballCircleContent(sym)
-                const kind = ballBarKind(sym)
-                return (
-                  <div key={`${i}-${sym}`} className={`obs-ball obs-ball--${kind}`}>
-                    {label}
-                  </div>
-                )
-              })}
-            </div>
-            <div
-              className={`obs-bowler-balls-fade obs-bowler-balls-fade--left${scrollFade.left ? ' obs-bowler-balls-fade--on' : ''}`}
-              aria-hidden
-            >
-              <span className="obs-bowler-balls-fade-icon">‹</span>
-            </div>
-            <div
-              className={`obs-bowler-balls-fade obs-bowler-balls-fade--right${scrollFade.right ? ' obs-bowler-balls-fade--on' : ''}`}
-              aria-hidden
-            >
-              <span className="obs-bowler-balls-fade-icon">›</span>
+              <div ref={ballsTrackRef} className="obs-bowler-balls" role="group" aria-label="This over">
+                {syms.map((sym, i) => {
+                  const { label } = ballCircleContent(sym)
+                  const kind = ballBarKind(sym)
+                  return (
+                    <div key={`${i}-${sym}`} className={`obs-ball obs-ball--${kind}`}>
+                      {label}
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           </div>
           {bowlerFlash ? (
@@ -304,7 +343,13 @@ export function ObsScoreBar({ match, cfg, state, events }: Props) {
         </div>
       </div>
 
-      <div className="obs-score-bar__segment obs-score-bar__abbr">{bowlAbbr}</div>
+      <div
+        className="obs-score-bar__segment obs-score-bar__abbr obs-score-bar__abbr--fielding"
+        title={bowlSnap.name.trim() || undefined}
+        aria-label={`Fielding team: ${bowlSnap.name.trim() || bowlShort}`}
+      >
+        {bowlShort}
+      </div>
     </div>
   )
 }

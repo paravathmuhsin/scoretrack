@@ -1,10 +1,16 @@
 import { humanizeResultSidesInText } from '../lib/humanizeResultText'
-import { isInningsOver, opp, oversString, type ReplayConfig, type ReplayState } from '../scoring/engine'
-import type { Side } from '../types/models'
+import { matchCardRowContent } from '../lib/scoreLineFormat'
+import { teamAvatarLabel } from '../lib/teamAvatarLabel'
+import { MatchCardScoreRwOvers } from './MatchCardScoreRwOvers'
+import { opp, type ReplayConfig, type ReplayState } from '../scoring/engine'
+import type { MatchTeamSnapshot, Side } from '../types/models'
 
 export type MatchScorecardProps = {
   homeName: string
   awayName: string
+  /** When set, circle avatar uses squad short name (via {@link teamAvatarLabel}). */
+  homeTeam?: Pick<MatchTeamSnapshot, 'name' | 'shortName'>
+  awayTeam?: Pick<MatchTeamSnapshot, 'name' | 'shortName'>
   cfg: ReplayConfig
   state: ReplayState
   /** Top-left label */
@@ -47,52 +53,18 @@ function humanResult(state: ReplayState, homeName: string, awayName: string): st
 
 type RowModel = {
   side: Side
-  scoreText: string | null
-  centerText: string | null
+  rw: string | null
+  oversParen: string | null
+  statusOnly: string | null
 }
 
-function buildRows(
-  cfg: ReplayConfig,
-  state: ReplayState,
-  opts?: { listingLayout?: boolean },
-): [RowModel, RowModel] {
+function buildRows(cfg: ReplayConfig, state: ReplayState): [RowModel, RowModel] {
   const firstBat = state.innings1.battingSide
   const secondBat = opp(firstBat)
-  const i1 = state.innings1
-  const i2 = state.innings2
-  const listingHideChaseCenter =
-    Boolean(opts?.listingLayout) &&
-    Boolean(i2) &&
-    !state.matchComplete &&
-    state.activeInnings === 2
 
   const rowFor = (side: Side): RowModel => {
-    if (side === firstBat) {
-      const scoreText = `${i1.runs}/${i1.wickets}`
-      let centerText: string | null = null
-      const inn1Live = !isInningsOver(cfg, i1, state)
-      if (!i2 && !state.matchComplete && state.activeInnings === 1 && inn1Live) {
-        centerText = `(${oversString(i1.legalBalls, cfg.ballsPerOver)}/${cfg.oversLimit} ov)`
-      }
-      return { side, scoreText, centerText }
-    }
-
-    if (!i2) {
-      const scoreText = null
-      const centerText = state.matchComplete ? null : 'Yet to bat'
-      return { side, scoreText, centerText }
-    }
-
-    const target = i1.runs + 1
-    const centerText =
-      listingHideChaseCenter
-        ? null
-        : `(${oversString(i2.legalBalls, cfg.ballsPerOver)}/${cfg.oversLimit} ov, T:${target})`
-    return {
-      side,
-      scoreText: `${i2.runs}/${i2.wickets}`,
-      centerText,
-    }
+    const { rw, oversParen, statusOnly } = matchCardRowContent(state, cfg, side)
+    return { side, rw, oversParen, statusOnly }
   }
 
   return [rowFor(firstBat), rowFor(secondBat)]
@@ -101,6 +73,8 @@ function buildRows(
 export function MatchScorecard({
   homeName,
   awayName,
+  homeTeam,
+  awayTeam,
   cfg,
   state,
   headerMode,
@@ -113,7 +87,7 @@ export function MatchScorecard({
   compact = false,
   suppressResultFooter = false,
 }: MatchScorecardProps) {
-  const [rowA, rowB] = buildRows(cfg, state, { listingLayout })
+  const [rowA, rowB] = buildRows(cfg, state)
 
   /** Prefer replay-derived line when complete so wording stays in sync with engine (team names + margins). */
   const replayLine = humanResult(state, homeName, awayName)
@@ -131,6 +105,9 @@ export function MatchScorecard({
 
   const loserSide: Side | null =
     state.matchComplete && state.winner && state.winner !== 'tie' ? opp(state.winner) : null
+  /** First innings side while chase is live — same de-emphasis as score page `.score-live-side--completed-innings`. */
+  const completedInningsSide: Side | null =
+    state.innings2 && !state.matchComplete ? state.innings1.battingSide : null
 
   return (
     <div className={'match-scorecard' + (listingLayout ? ' match-scorecard--listing' : '')}>
@@ -167,14 +144,20 @@ export function MatchScorecard({
       <ScorecardRow
         homeName={homeName}
         awayName={awayName}
+        homeTeam={homeTeam}
+        awayTeam={awayTeam}
         row={rowA}
         loser={loserSide === rowA.side}
+        completedInnings={completedInningsSide === rowA.side}
       />
       <ScorecardRow
         homeName={homeName}
         awayName={awayName}
+        homeTeam={homeTeam}
+        awayTeam={awayTeam}
         row={rowB}
         loser={loserSide === rowB.side}
+        completedInnings={completedInningsSide === rowB.side}
       />
 
       {listingLayout && listingLiveFooter && !state.matchComplete && (
@@ -200,36 +183,44 @@ function ScorecardRow({
   row,
   homeName,
   awayName,
+  homeTeam,
+  awayTeam,
   loser,
+  completedInnings,
 }: {
   row: RowModel
   homeName: string
   awayName: string
+  homeTeam?: Pick<MatchTeamSnapshot, 'name' | 'shortName'>
+  awayTeam?: Pick<MatchTeamSnapshot, 'name' | 'shortName'>
   loser?: boolean
+  completedInnings?: boolean
 }) {
   const name = sideName(row.side, homeName, awayName)
-  const initials = teamInitials(name)
-  const hasScore = row.scoreText != null && row.scoreText !== ''
-  const metaBesideScore = Boolean(row.centerText && hasScore)
-  const statusOnly = Boolean(row.centerText && !hasScore)
+  const snap = row.side === 'home' ? homeTeam : awayTeam
+  const avatarLabel = snap ? teamAvatarLabel(snap) : teamInitials(name)
+  const hasScore = row.rw != null && row.rw !== ''
+  const statusOnly = Boolean(row.statusOnly && !hasScore)
+
+  const rowClass =
+    'match-scorecard-row' +
+    (loser ? ' match-scorecard-row--loser' : '') +
+    (completedInnings ? ' match-scorecard-row--completed-innings' : '')
 
   return (
-    <div className={'match-scorecard-row' + (loser ? ' match-scorecard-row--loser' : '')}>
+    <div className={rowClass}>
       <div className="match-scorecard-team">
         <span className="match-scorecard-avatar" aria-hidden>
-          {initials}
+          {avatarLabel}
         </span>
         <span className="match-scorecard-teamname">{name}</span>
       </div>
       <div className="match-scorecard-trailing">
-        {metaBesideScore ? (
-          <span className="match-scorecard-meta-inline">{row.centerText}</span>
-        ) : null}
-        <div className="match-scorecard-score">
-          {hasScore ? (
-            row.scoreText
+        <div className="match-scorecard-score match-scorecard-score--line">
+          {hasScore && row.rw ? (
+            <MatchCardScoreRwOvers rw={row.rw} oversParen={row.oversParen} />
           ) : statusOnly ? (
-            <span className="match-scorecard-status muted">{row.centerText}</span>
+            <span className="match-scorecard-status muted">{row.statusOnly}</span>
           ) : (
             <span className="muted">—</span>
           )}

@@ -15,11 +15,21 @@ export type UserTeamFormPayload = {
   players: RosterPlayer[]
 }
 
-const SHORT_NAME_MAX = 24
+/** Team abbreviation: letters only, max length, no spaces (enforced in UI + on submit). */
+const TEAM_SHORT_CODE_MAX = 3
+
+function normalizeTeamShortCode(raw: string): string {
+  return raw
+    .replace(/\s/g, '')
+    .replace(/[^a-zA-Z]/g, '')
+    .slice(0, TEAM_SHORT_CODE_MAX)
+    .toUpperCase()
+}
 
 type Props = {
   initial?: TeamDoc & { id: string }
   submitLabel: string
+  requireLocation?: boolean
   onSubmit: (payload: UserTeamFormPayload) => Promise<void>
 }
 
@@ -77,9 +87,9 @@ function IconField({
   )
 }
 
-export function UserTeamForm({ initial, submitLabel, onSubmit }: Props) {
+export function UserTeamForm({ initial, submitLabel, requireLocation = false, onSubmit }: Props) {
   const [name, setName] = useState(() => initial?.name ?? '')
-  const [shortName, setShortName] = useState(() => (initial?.shortName ?? '').trim())
+  const [shortName, setShortName] = useState(() => normalizeTeamShortCode(initial?.shortName ?? ''))
   const [location, setLocation] = useState(() => (initial?.location ?? '').trim())
   const [players, setPlayers] = useState<RosterPlayer[]>(() => initial?.players ?? [])
   const [modalOpen, setModalOpen] = useState(false)
@@ -98,13 +108,14 @@ export function UserTeamForm({ initial, submitLabel, onSubmit }: Props) {
       setError('Team name is required.')
       return
     }
-    const sn = shortName.trim()
+    const sn = normalizeTeamShortCode(shortName)
     if (!sn) {
-      setError('Short name is required.')
+      setError('Short code is required (1–3 letters, no spaces).')
       return
     }
-    if (sn.length > SHORT_NAME_MAX) {
-      setError(`Short name must be at most ${SHORT_NAME_MAX} characters.`)
+    const normalizedLocation = location.trim()
+    if (requireLocation && !normalizedLocation) {
+      setError('Team city is required.')
       return
     }
     if (players.length < MIN_PLAYERS) {
@@ -118,7 +129,7 @@ export function UserTeamForm({ initial, submitLabel, onSubmit }: Props) {
       await onSubmit({
         name: n,
         shortName: sn,
-        location: location.trim() ? location.trim() : null,
+        location: normalizedLocation ? normalizedLocation : null,
         players,
       })
     } catch (err) {
@@ -159,24 +170,30 @@ export function UserTeamForm({ initial, submitLabel, onSubmit }: Props) {
                 id="user-team-short-name"
                 name="teamShortName"
                 value={shortName}
-                onChange={(e) => setShortName(e.target.value)}
+                onChange={(e) => setShortName(normalizeTeamShortCode(e.target.value))}
                 required
-                maxLength={SHORT_NAME_MAX}
+                maxLength={TEAM_SHORT_CODE_MAX}
                 autoComplete="off"
-                placeholder="Short name (e.g. CSK)"
-                aria-label="Short name (required)"
+                inputMode="text"
+                pattern="[A-Za-z]{1,3}"
+                placeholder="e.g. CSK"
+                aria-label="Short code, 1 to 3 letters, no spaces (required)"
                 className="h-9 flex-1 border-0 bg-transparent px-0 py-0 text-slate-900 shadow-none placeholder:text-slate-600 focus-visible:ring-0 md:text-sm"
               />
             </IconField>
+            <p className="pl-1 text-xs text-slate-500">
+              Up to {TEAM_SHORT_CODE_MAX} letters only — no spaces or numbers.
+            </p>
             <IconField icon={MapPin} iconClassName="text-slate-500">
               <Input
                 id="user-team-location"
                 name="teamLocation"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
-                placeholder="City or region (optional)"
+                required={requireLocation}
+                placeholder={requireLocation ? 'City or region' : 'City or region (optional)'}
                 autoComplete="off"
-                aria-label="Team location (optional)"
+                aria-label={requireLocation ? 'Team city (required)' : 'Team location (optional)'}
                 className="h-9 flex-1 border-0 bg-transparent px-0 py-0 text-slate-900 shadow-none placeholder:text-slate-600 focus-visible:ring-0 md:text-sm"
               />
             </IconField>

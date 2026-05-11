@@ -6,7 +6,10 @@ export function MainNav() {
   const { user } = useAuth()
   const { pathname } = useLocation()
   const matchesBrowseActive =
-    pathname === '/' || pathname === '/matches' || pathname.startsWith('/live/')
+    pathname === '/' ||
+    pathname === '/matches' ||
+    pathname.startsWith('/live/') ||
+    pathname.startsWith('/player/')
   const tournamentsBrowseActive = pathname.startsWith('/tournaments')
 
   return (
@@ -30,6 +33,7 @@ export function MainNav() {
           <NavLink to="/app/tournaments">My tournaments</NavLink>
           <NavLink to="/app/teams">My teams</NavLink>
           <NavLink to="/app/matches">My matches</NavLink>
+          <NavLink to="/app/my-stats">My stats</NavLink>
         </>
       )}
     </nav>

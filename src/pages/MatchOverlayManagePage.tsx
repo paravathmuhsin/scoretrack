@@ -2,11 +2,14 @@ import { doc, onSnapshot, Timestamp, updateDoc } from 'firebase/firestore'
 import { ArrowLeft, Monitor } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { toast } from 'sonner'
 import { useAuth } from '../auth/useAuth'
 import { BtnPendingLabel } from '../components/Spinner'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { getDb } from '../firebase/config'
+import { usePendingWrites } from '../hooks/usePendingWrites'
+import { ensureMatchPublicId } from '../lib/ensureMatchPublicId'
 import {
   DEFAULT_OVERLAY_PREVIEW_DURATION_SEC,
   overlayPreviewDurationSec,
@@ -16,11 +19,13 @@ import type { MatchDoc, OverlayPreviewPrimary } from '../types/models'
 export function MatchOverlayManagePage() {
   const { id } = useParams()
   const { user } = useAuth()
+  const { run, writePending } = usePendingWrites()
   const [match, setMatch] = useState<(MatchDoc & { id: string }) | null>(null)
   const [durationInput, setDurationInput] = useState(String(DEFAULT_OVERLAY_PREVIEW_DURATION_SEC))
   const [savingDuration, setSavingDuration] = useState(false)
   const [previewBusy, setPreviewBusy] = useState<OverlayPreviewPrimary | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [overlayLinkBusy, setOverlayLinkBusy] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -64,8 +69,24 @@ export function MatchOverlayManagePage() {
     )
   }
 
-  const publicUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/overlay/${match.publicId}`
+  const publicUrl = match.publicId?.trim()
+    ? `${typeof window !== 'undefined' ? window.location.origin : ''}/overlay/${match.publicId}`
+    : ''
+
   const effectiveSec = overlayPreviewDurationSec(match)
+
+  async function generateOverlayLink() {
+    if (!match || user?.uid !== match.createdBy) return
+    setOverlayLinkBusy(true)
+    try {
+      await ensureMatchPublicId(doc(getDb(), 'matches', match.id), match.publicId, run)
+      toast.success('Overlay link created')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not create overlay link')
+    } finally {
+      setOverlayLinkBusy(false)
+    }
+  }
 
   async function saveDuration() {
     if (!match) return
@@ -128,13 +149,31 @@ export function MatchOverlayManagePage() {
         </div>
         <div className="min-w-0">
           <h1 className="text-xl font-bold text-slate-900">Manage overlay</h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Your overlay settings are saved with this match. The OBS browser source uses{' '}
-            <strong className="font-semibold text-slate-800">no URL parameters</strong> — keep this URL in OBS:
-          </p>
-          <p className="mt-2 break-all rounded-lg bg-slate-100 px-3 py-2 font-mono text-xs text-slate-800">
-            {publicUrl}
-          </p>
+          {!match.publicId?.trim() ? (
+            <div className="mt-3 space-y-3">
+              <p className="text-sm text-slate-600">
+                Create a link to paste into OBS as a browser source (one URL per match, like a team invite link).
+              </p>
+              <Button
+                type="button"
+                className="h-11 w-full rounded-xl font-semibold"
+                disabled={overlayLinkBusy || writePending}
+                onClick={() => void generateOverlayLink()}
+              >
+                {overlayLinkBusy ? 'Creating…' : 'Generate overlay link'}
+              </Button>
+            </div>
+          ) : (
+            <>
+              <p className="mt-1 text-sm text-slate-600">
+                Your overlay settings are saved with this match. The OBS browser source uses{' '}
+                <strong className="font-semibold text-slate-800">no URL parameters</strong> — keep this URL in OBS:
+              </p>
+              <p className="mt-2 break-all rounded-lg bg-slate-100 px-3 py-2 font-mono text-xs text-slate-800">
+                {publicUrl}
+              </p>
+            </>
+          )}
         </div>
       </div>
 

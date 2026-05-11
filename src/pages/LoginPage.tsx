@@ -1,6 +1,6 @@
 import { Eye, EyeOff, Lock, Mail, ShieldCheck } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { getAuthErrorMessage } from '../auth/authErrors'
 import { useAuth } from '../auth/useAuth'
@@ -9,10 +9,13 @@ import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Separator } from '../components/ui/separator'
 import { BtnPendingLabel } from '../components/Spinner'
+import { safePostAuthPath, withRedirectQuery } from '../lib/safeRedirect'
 
 export function LoginPage() {
   const { signIn, signInWithGoogle, sendPasswordReset } = useAuth()
   const nav = useNavigate()
+  const [searchParams] = useSearchParams()
+  const redirectAfterAuth = safePostAuthPath(searchParams.get('redirect'))
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -26,7 +29,7 @@ export function LoginPage() {
     setEmailBusy(true)
     try {
       await signIn(email, password)
-      nav('/')
+      nav(redirectAfterAuth, { replace: true })
     } catch (err) {
       toast.error(getAuthErrorMessage(err))
     } finally {
@@ -38,7 +41,7 @@ export function LoginPage() {
     setGoogleBusy(true)
     try {
       await signInWithGoogle()
-      nav('/')
+      nav(redirectAfterAuth, { replace: true })
     } catch (err) {
       toast.error(getAuthErrorMessage(err))
     } finally {
@@ -197,7 +200,10 @@ export function LoginPage() {
 
             <p className="pt-1 text-center text-sm text-slate-600">
               No account?{' '}
-              <Link to="/register" className="font-semibold !text-primary hover:!text-primary/80">
+              <Link
+                to={withRedirectQuery('/register', searchParams.get('redirect'))}
+                className="font-semibold !text-primary hover:!text-primary/80"
+              >
                 Register
               </Link>
             </p>

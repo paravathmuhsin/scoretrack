@@ -84,7 +84,8 @@ export interface MatchDoc {
   status: MatchStatus
   createdBy: string
   isPublic: boolean
-  publicId: string
+  /** Share token for `/live/:publicId` and `/overlay/:publicId`; legacy matches may omit until generated in-app. */
+  publicId?: string
   /** Set on create; legacy matches may omit. */
   createdAt?: Timestamp
   startedAt?: Timestamp
@@ -117,6 +118,120 @@ export interface MatchDoc {
   overlayPrefs?: MatchOverlayPrefs
   /** Stream overlay: time-limited forced primary from manage page. */
   overlayPreview?: MatchOverlayPreview | null
+  /**
+   * When set, public MVP / Player of the Match uses this XI player instead of the automatic MVP pick.
+   * Omit or clear for automatic selection.
+   */
+  playerOfTheMatchPlayerId?: string
+  /**
+   * Resolved POTM written when the match is saved as `completed` (and updated if the organiser changes POTM).
+   * Prefer this over recomputing MVP for public scorecard / PDFs.
+   */
+  playerOfTheMatchResult?: PlayerOfTheMatchResult | null
+}
+
+/** Persisted effective Player of the Match after the match is completed. */
+export interface PlayerOfTheMatchResult {
+  playerId: string
+  side: Side
+  name: string
+  note: string | null
+  source: 'manual' | 'auto'
+}
+
+/** `matches/{matchId}/playerStats/{playerId}` — materialised row when a match completes. */
+export interface MatchPlayerStatsDoc {
+  playerId: string
+  name: string
+  matchId: string
+  /** Denormalised for rules / collection queries. */
+  isPublic: boolean
+  tournamentId: string | null
+  /** Match doc id used when incrementing career rollups (same as matchId). */
+  sourceMatchId: string
+  updatedAt: Timestamp
+  battingRuns: number
+  battingBalls: number
+  battingFours: number
+  battingSixes: number
+  battingDismissals: number
+  /** This match: counted an innings batted if they faced a ball, scored, or were dismissed. */
+  battingInnings?: number
+  /** This match: not-out innings (batted and not dismissed). */
+  battingNotOuts?: number
+  battingHundreds?: number
+  battingFifties?: number
+  /** Highest score in this match (same as battingRuns for one innings). */
+  battingHighScore?: number
+  bowlingBalls: number
+  bowlingRuns: number
+  bowlingWickets: number
+  bowlingMatches?: number
+  bowlingInnings?: number
+  bowlingFourWicketInnings?: number
+  bowlingFiveWicketInnings?: number
+  /** Match where combined wickets across innings ≥ 10. */
+  bowlingTenWicketMatch?: number
+  bestBowlingWickets?: number
+  bestBowlingRunsConceded?: number
+  fieldingCatches: number
+  fieldingRunOuts: number
+  fieldingStumpings: number
+  wasPotm: boolean
+}
+
+/** Root `playerCareerStats/{playerId}` — rollups from every completed XI (match creator maintains). */
+export interface PlayerCareerStatsDoc {
+  playerId: string
+  /** Denormalised from the latest contributing match roster (best-effort). */
+  displayName?: string
+  /** Account full name from `users/{uid}` — synced by the player for public career pages. */
+  profileFullName?: string
+  /** Account display name from profile — synced by the player; distinct from scorecard `displayName`. */
+  profileDisplayName?: string
+  updatedAt: Timestamp
+  /** Last contributing match id (for rules when updating from a completed match). */
+  sourceMatchId?: string
+  /** When a write comes from “End tournament”, the tournament doc id (for rules). */
+  sourceTournamentId?: string
+  /** True once any contributing public match or public tournament award was merged (enables unauthenticated read). */
+  isPublicAggregate: boolean
+  matchesPlayed: number
+  potmAwards: number
+  pottAwards: number
+  runs: number
+  balls: number
+  /** Career batting innings (batted: ball faced, run scored, or dismissed). */
+  battingInnings?: number
+  /** Career not-out innings. */
+  notOuts?: number
+  battingDismissals?: number
+  hundreds?: number
+  fifties?: number
+  battingFours?: number
+  battingSixes?: number
+  /** Best single-innings score across completed matches. */
+  highScore?: number
+  wickets: number
+  /** Sum of legal balls bowled (derive overs as balls / ballsPerOver on read if needed). */
+  bowlingBalls: number
+  runsConceded: number
+  /** Matches where the player bowled at least one legal ball. */
+  bowlingMatches?: number
+  /** Bowling innings (per innings bowled in with legal ball or wicket). */
+  bowlingInnings?: number
+  /** Innings with exactly four wickets. */
+  bowlingFourWicketInnings?: number
+  /** Innings with five to nine wickets. */
+  bowlingFiveWicketInnings?: number
+  /** Matches with ten or more wickets in the match for this bowler (both innings combined). */
+  bowlingTenWicketMatches?: number
+  /** Best single-innings bowling (wickets). Paired with bestBowlingRunsConceded. */
+  bestBowlingWickets?: number
+  bestBowlingRunsConceded?: number
+  fieldingCatches: number
+  fieldingRunOuts: number
+  fieldingStumpings: number
 }
 
 export interface TournamentDoc {
@@ -144,6 +259,22 @@ export interface TournamentDoc {
   defaultOversLimit?: number
   /** Default max overs per bowler; omit or null = no limit. */
   defaultOversPerBowler?: number | null
+  /** Set when the organiser ends the tournament from the overview page. */
+  tournamentOutcome?: TournamentOutcome | null
+}
+
+/** Persisted when the organiser confirms “End tournament”. */
+export interface TournamentOutcome {
+  endedAt: Timestamp
+  winnerLinkedTeamId: string
+  runnerUpLinkedTeamId: string
+  playerOfTheTournament: {
+    playerId: string
+    name: string
+    /** Tournament team key (linkedTeams id or home/away style) for display. */
+    teamId: string
+    source: 'default' | 'manual'
+  }
 }
 
 /** `tournaments/{tid}/groups/{groupId}` — league phase pool. */
@@ -174,10 +305,27 @@ export interface TeamDoc {
   location?: string | null
   /** Tournament organiser uid; set on create and before tournament delete so rosters stay accessible. */
   organiserUid?: string
+  /**
+   * Active join-invite token (`userTeamJoinInvites/{token}` doc id). Present invitees may read the squad and append
+   * themselves per Firestore rules.
+   */
+  joinInviteToken?: string | null
+}
+
+/** `userTeamJoinInvites/{token}` — shareable join link metadata (token equals `TeamDoc.joinInviteToken`). */
+export interface UserTeamJoinInviteDoc {
+  ownerUid: string
+  teamId: string
+  teamName: string
+  createdAt: Timestamp
+  /** Denormalized roster ids for UX; invitees append via squad `players` update. */
+  memberIds: string[]
 }
 
 /** Firestore profile under `users/{uid}` (owner read/write). */
 export interface UserProfileDoc {
+  /** Legal / passport-style name; required for app access (legacy docs may omit until user saves profile). */
+  fullName?: string
   displayName: string
   createdAt?: Timestamp
   /** Exactly 10 digits (no spaces); required for app access; indexed in directory. */
@@ -281,6 +429,12 @@ export interface PlayerAggRow {
   highScore?: number
   /** Batting dismissals (outs) across the tournament. */
   dismissals?: number
+  /** Completed matches where this player was stored Player of the Match. */
+  potmAwards?: number
+  /** Fielding breakdown (same replay rules as MVP). */
+  catches?: number
+  runOuts?: number
+  stumpings?: number
 }
 
 export interface StatsDoc {

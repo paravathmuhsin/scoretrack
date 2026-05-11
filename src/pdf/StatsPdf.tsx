@@ -1,4 +1,5 @@
 import { Document, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
+import { PdfScoretrackHeader } from './PdfScoretrackHeader'
 import type { StandingsDoc } from '../types/models'
 
 /** Mirrors `src/index.css` `.table` / `.table th, .table td` on the points panel. */
@@ -79,7 +80,8 @@ export function StatsPdfDocument({
 
   return (
     <Document>
-      <Page size="A4" style={styles.page}>
+      <Page size="A4" style={styles.page} wrap={true}>
+        <PdfScoretrackHeader />
         <Text style={styles.tournamentTitle}>{tournamentName}</Text>
         <Text style={styles.sectionTitle}>Points table</Text>
 
@@ -109,7 +111,7 @@ export function StatsPdfDocument({
           </View>
 
           {teams.map((r) => (
-            <View key={r.teamId} style={styles.row} wrap={false}>
+            <View key={r.teamId} style={styles.row} wrap={true}>
               <View style={styles.colTeam}>
                 <Text style={styles.td}>{r.teamName}</Text>
               </View>

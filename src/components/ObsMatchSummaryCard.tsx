@@ -2,12 +2,6 @@ import { matchCompleteHeadline, matchCompleteScoreLines } from '../lib/matchSumm
 import type { ReplayConfig, ReplayState } from '../scoring/engine'
 import type { MatchDoc } from '../types/models'
 
-function eventInitials(match: MatchDoc): string {
-  const h = match.home.name.trim().split(/\s+/)[0]?.[0] ?? '?'
-  const a = match.away.name.trim().split(/\s+/)[0]?.[0] ?? '?'
-  return (h + a).toUpperCase()
-}
-
 type Props = {
   match: MatchDoc & { id: string }
   cfg: ReplayConfig
@@ -25,10 +19,6 @@ export function ObsMatchSummaryCard({ match, cfg, state, previewPlaceholder }: P
   return (
     <div className="obs-sc obs-match-summary-card">
       <div className="obs-sc-frame">
-        <div className="obs-sc-logo" aria-hidden>
-          <span className="obs-sc-logo-inner">{eventInitials(match)}</span>
-        </div>
-
         <div className="obs-sc-inner">
           <div className="obs-sc-head-primary">MATCH RESULT</div>
 

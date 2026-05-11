@@ -5,6 +5,7 @@ import {
   inningsExtrasBreakdownFromBalls,
   maidenCountsPerInnings,
   opp,
+  oversProgressString,
   oversString,
   type InningsSnapshot,
   type ReplayConfig,
@@ -41,13 +42,6 @@ function inningsExtras(inn: InningsSnapshot, battingSide: Side, match: MatchDoc,
     sumBat += state.batterStats[p.playerId]?.runs ?? 0
   }
   return Math.max(0, inn.runs - sumBat)
-}
-
-function teamInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (parts.length >= 2) return (parts[0]![0]! + parts[1]![0]!).toUpperCase()
-  const s = parts[0] ?? '?'
-  return s.slice(0, 2).toUpperCase()
 }
 
 function bowlEcon(runs: number, legalBalls: number, ballsPerOver: number): string {
@@ -98,16 +92,12 @@ export function ObsBowlingScorecard({ match, cfg, state, events }: Props) {
   const otherExtras = Math.max(0, ext - sumComp)
   const extrasDisplay = formatExtrasBreakdownLine(ext, comp, otherExtras)
 
-  const oversDisp = `${oversString(inn.legalBalls, cfg.ballsPerOver)}/${cfg.oversLimit}`
+  const oversDisp = oversProgressString(inn.legalBalls, cfg.ballsPerOver, cfg.oversLimit)
   const totalDisp = `${inn.runs}-${inn.wickets}`
 
   return (
     <div className="obs-sc obs-sc--bowling">
       <div className="obs-sc-frame">
-        <div className="obs-sc-logo" aria-hidden>
-          <span className="obs-sc-logo-inner">{teamInitials(teamName)}</span>
-        </div>
-
         <div className="obs-sc-inner">
           <div className="obs-sc-head-primary">{teamName}</div>
 

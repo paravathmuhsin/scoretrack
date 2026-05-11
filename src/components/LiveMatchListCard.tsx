@@ -1,14 +1,12 @@
 import type { Timestamp } from 'firebase/firestore'
-import { collection, getDocs, onSnapshot, orderBy, query } from 'firebase/firestore'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getDb } from '../firebase/config'
+import { usePublicMatchReplay } from '../hooks/usePublicMatchReplay'
 import { useTournamentListingMeta } from '../hooks/useTournamentListingMeta'
 import { humanizeResultForMatch } from '../lib/humanizeResultText'
 import { buildListingLiveFooter } from '../lib/publicMatchCardUtils'
-import { scoreEventFromFirestore } from '../lib/matchEvents'
+import { teamAvatarLabel } from '../lib/teamAvatarLabel'
 import { MatchScorecard } from './MatchScorecard'
-import { replayEvents, type ReplayConfig, type ScoreEvent } from '../scoring/engine'
 import type { MatchDoc } from '../types/models'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -33,72 +31,14 @@ type Props = {
   replayMode?: 'live' | 'completed'
 }
 
-function teamInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (parts.length >= 2) return (parts[0]![0]! + parts[1]![0]!).toUpperCase()
-  const s = parts[0] ?? '?'
-  return s.slice(0, 2).toUpperCase()
-}
-
 export function LiveMatchListCard({ match, replayMode = 'live' }: Props) {
-  const [events, setEvents] = useState<ScoreEvent[]>([])
   /** Re-check 24h result window periodically while the card can still flip. */
   const [, setListingTick] = useState(0)
 
-  useEffect(() => {
-    if (!match.id || !match.isPublic) return
-    const coll = collection(getDb(), 'matches', match.id, 'events')
-    const qy = query(coll, orderBy('seq', 'asc'))
-
-    if (replayMode === 'completed') {
-      let cancelled = false
-      void (async () => {
-        try {
-          const snap = await getDocs(qy)
-          if (cancelled) return
-          const out: ScoreEvent[] = []
-          snap.forEach((d) => {
-            const ev = scoreEventFromFirestore(d.data() as Parameters<typeof scoreEventFromFirestore>[0])
-            if (ev) out.push(ev)
-          })
-          setEvents(out)
-        } catch (e) {
-          console.error('[LiveMatchListCard completed replay]', e)
-          if (!cancelled) setEvents([])
-        }
-      })()
-      return () => {
-        cancelled = true
-      }
-    }
-
-    return onSnapshot(qy, (snap) => {
-      const out: ScoreEvent[] = []
-      snap.forEach((d) => {
-        const ev = scoreEventFromFirestore(d.data() as Parameters<typeof scoreEventFromFirestore>[0])
-        if (ev) out.push(ev)
-      })
-      setEvents(out)
-    })
-  }, [match.id, match.isPublic, replayMode])
-
-  const cfg: ReplayConfig | null = useMemo(() => {
-    if (!match.lineup) return null
-    return {
-      squadSize: match.squadSize,
-      oversLimit: match.oversLimit,
-      ballsPerOver: match.ballsPerOver ?? 6,
-      oversPerBowler: match.oversPerBowler ?? null,
-      lineup: match.lineup,
-      homeName: match.home.name,
-      awayName: match.away.name,
-    }
-  }, [match])
-
-  const state = useMemo(() => {
-    if (!cfg) return null
-    return replayEvents(cfg, events)
-  }, [cfg, events])
+  const { cfg, state } = usePublicMatchReplay(
+    match,
+    !match.id || !match.isPublic ? 'off' : replayMode,
+  )
 
   useEffect(() => {
     if (!state?.matchComplete) return
@@ -133,6 +73,8 @@ export function LiveMatchListCard({ match, replayMode = 'live' }: Props) {
       <MatchScorecard
         homeName={match.home.name}
         awayName={match.away.name}
+        homeTeam={match.home}
+        awayTeam={match.away}
         cfg={cfg}
         state={state}
         headerMode={listingHeaderMode}
@@ -157,7 +99,7 @@ export function LiveMatchListCard({ match, replayMode = 'live' }: Props) {
         <div className="match-scorecard-row">
           <div className="match-scorecard-team">
             <span className="match-scorecard-avatar" aria-hidden>
-              {teamInitials(match.home.name)}
+              {teamAvatarLabel(match.home)}
             </span>
             <span className="match-scorecard-teamname">{match.home.name}</span>
           </div>
@@ -168,7 +110,7 @@ export function LiveMatchListCard({ match, replayMode = 'live' }: Props) {
         <div className="match-scorecard-row">
           <div className="match-scorecard-team">
             <span className="match-scorecard-avatar" aria-hidden>
-              {teamInitials(match.away.name)}
+              {teamAvatarLabel(match.away)}
             </span>
             <span className="match-scorecard-teamname">{match.away.name}</span>
           </div>
@@ -198,7 +140,7 @@ export function LiveMatchListCard({ match, replayMode = 'live' }: Props) {
         <div className="match-scorecard-row">
           <div className="match-scorecard-team">
             <span className="match-scorecard-avatar" aria-hidden>
-              {teamInitials(match.home.name)}
+              {teamAvatarLabel(match.home)}
             </span>
             <span className="match-scorecard-teamname">{match.home.name}</span>
           </div>
@@ -209,7 +151,7 @@ export function LiveMatchListCard({ match, replayMode = 'live' }: Props) {
         <div className="match-scorecard-row">
           <div className="match-scorecard-team">
             <span className="match-scorecard-avatar" aria-hidden>
-              {teamInitials(match.away.name)}
+              {teamAvatarLabel(match.away)}
             </span>
             <span className="match-scorecard-teamname">{match.away.name}</span>
           </div>

@@ -1,10 +1,4 @@
-import {
-  collection,
-  onSnapshot,
-  orderBy,
-  query,
-  where,
-} from 'firebase/firestore'
+import { collection, onSnapshot, query, where } from 'firebase/firestore'
 import { type ReactElement, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { LiveMatchListCard } from '../components/LiveMatchListCard'
@@ -15,8 +9,9 @@ import { getDb } from '../firebase/config'
 import type { MatchDoc } from '../types/models'
 
 /**
- * Public home match browser (`/`): lists all **`isPublic === true`** fixtures by status.
- * No sign-in required; queries do **not** filter by `createdBy` — see `ownedByUser.ts` for app-only filters.
+ * Public home (`/`): one Firestore query — **`where('isPublic', '==', true)`** only.
+ * No `createdBy` / auth; the same documents load signed-in or anonymous (see `firestore.rules`).
+ * Tabs filter and sort client-side.
  */
 
 type Row = { id: string } & MatchDoc
@@ -116,23 +111,47 @@ function completedMs(m: MatchDoc): number {
   return 0
 }
 
+function PublicMatchCardRow({ m }: { m: Row }) {
+  if (m.status === 'live') return <LiveMatchListCard match={m} />
+  if (m.status === 'scheduled') return <PublicUpcomingMatchCard match={m} />
+  return <LiveMatchListCard match={m} replayMode="completed" />
+}
+
 export function PublicMatchesPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const filter = parseFilter(searchParams.get('filter'))
 
-  /** Live tab: full list from snapshot (real-time), paginated client-side. */
-  const [liveRows, setLiveRows] = useState<Row[]>([])
-  const [liveError, setLiveError] = useState<string | null>(null)
+  const [publicRows, setPublicRows] = useState<Row[]>([])
+  const [snapshotStatus, setSnapshotStatus] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [snapshotError, setSnapshotError] = useState<string | null>(null)
 
-  /** Upcoming / completed: one public snapshot, filter/sort/paginate client-side (no composite index required). */
-  const [nonLiveRows, setNonLiveRows] = useState<Row[]>([])
   const [pageIndex, setPageIndex] = useState(0)
-  const [pageLoading, setPageLoading] = useState(false)
-  const [pageError, setPageError] = useState<string | null>(null)
 
   useEffect(() => {
     setPageIndex(0)
   }, [filter])
+
+  useEffect(() => {
+    setSnapshotStatus('loading')
+    setSnapshotError(null)
+    const qy = query(collection(getDb(), 'matches'), where('isPublic', '==', true))
+    return onSnapshot(
+      qy,
+      (snap) => {
+        const list: Row[] = []
+        snap.forEach((d) => list.push({ id: d.id, ...(d.data() as MatchDoc) }))
+        setPublicRows(list)
+        setSnapshotStatus('ready')
+        setSnapshotError(null)
+      },
+      (err) => {
+        console.error('[PublicMatchesPage]', err)
+        setPublicRows([])
+        setSnapshotStatus('error')
+        setSnapshotError(err.message ?? 'Could not load matches.')
+      },
+    )
+  }, [])
 
   const setFilter = (f: PublicBrowseFilter) => {
     const next = new URLSearchParams(searchParams)
@@ -140,96 +159,55 @@ export function PublicMatchesPage() {
     setSearchParams(next, { replace: true })
   }
 
-  useEffect(() => {
-    if (filter !== 'live') return
-    setLiveError(null)
-    const qy = query(
-      collection(getDb(), 'matches'),
-      where('isPublic', '==', true),
-      where('status', '==', 'live'),
-      orderBy('startedAt', 'desc'),
-    )
-    return onSnapshot(
-      qy,
-      (snap) => {
-        const list: Row[] = []
-        snap.forEach((d) => list.push({ id: d.id, ...(d.data() as MatchDoc) }))
-        list.sort((a, b) => startedMs(b) - startedMs(a))
-        setLiveRows(list)
-        setLiveError(null)
-      },
-      (err) => {
-        console.error('[PublicMatchesPage live]', err)
-        setLiveRows([])
-        setLiveError(err.message ?? 'Could not load live matches.')
-      },
-    )
-  }, [filter])
+  const liveSorted = useMemo(
+    () =>
+      publicRows
+        .filter((m) => m.status === 'live')
+        .sort((a, b) => startedMs(b) - startedMs(a)),
+    [publicRows],
+  )
 
-  useEffect(() => {
-    if (filter === 'live') {
-      setPageLoading(false)
-      setPageError(null)
-      setNonLiveRows([])
-      return
+  const upcomingSorted = useMemo(
+    () =>
+      publicRows
+        .filter((m) => m.status === 'scheduled')
+        .sort((a, b) => scheduledMs(b) - scheduledMs(a)),
+    [publicRows],
+  )
+
+  const completedSorted = useMemo(
+    () =>
+      publicRows
+        .filter((m) => m.status === 'completed' || m.status === 'abandoned')
+        .sort((a, b) => completedMs(b) - completedMs(a)),
+    [publicRows],
+  )
+
+  const activeList = useMemo(() => {
+    switch (filter) {
+      case 'live':
+        return liveSorted
+      case 'upcoming':
+        return upcomingSorted
+      case 'completed':
+        return completedSorted
+      default:
+        return liveSorted
     }
-    setPageLoading(true)
-    setPageError(null)
-    const qy = query(collection(getDb(), 'matches'), where('isPublic', '==', true))
-    return onSnapshot(
-      qy,
-      (snap) => {
-        const list: Row[] = []
-        snap.forEach((d) => list.push({ id: d.id, ...(d.data() as MatchDoc) }))
-        setNonLiveRows(list)
-        setPageError(null)
-        setPageLoading(false)
-      },
-      (e) => {
-        console.error('[PublicMatchesPage]', e)
-        setNonLiveRows([])
-        setPageError(e instanceof Error ? e.message : 'Could not load matches.')
-        setPageLoading(false)
-      },
-    )
-  }, [filter])
-
-  const nonLiveSortedRows = useMemo(() => {
-    const list =
-      filter === 'upcoming'
-        ? nonLiveRows.filter((m) => m.status === 'scheduled')
-        : nonLiveRows.filter((m) => m.status === 'completed' || m.status === 'abandoned')
-    list.sort((a, b) => (filter === 'upcoming' ? scheduledMs(b) - scheduledMs(a) : completedMs(b) - completedMs(a)))
-    return list
-  }, [filter, nonLiveRows])
+  }, [filter, liveSorted, upcomingSorted, completedSorted])
 
   const pageRows = useMemo(() => {
-    if (filter === 'live') return []
     const start = pageIndex * PAGE_SIZE
-    return nonLiveSortedRows.slice(start, start + PAGE_SIZE)
-  }, [filter, pageIndex, nonLiveSortedRows])
+    return activeList.slice(start, start + PAGE_SIZE)
+  }, [activeList, pageIndex])
 
-  const nonLiveHasNextPage = (pageIndex + 1) * PAGE_SIZE < nonLiveSortedRows.length
+  const hasNextPage = (pageIndex + 1) * PAGE_SIZE < activeList.length
+  const totalPages = Math.max(1, Math.ceil(activeList.length / PAGE_SIZE))
 
-  const livePageRows = useMemo(() => {
-    const start = pageIndex * PAGE_SIZE
-    return liveRows.slice(start, start + PAGE_SIZE)
-  }, [liveRows, pageIndex])
+  const showPagination = activeList.length > PAGE_SIZE
 
-  const liveHasNextPage = (pageIndex + 1) * PAGE_SIZE < liveRows.length
-  const liveTotalPages = Math.max(1, Math.ceil(liveRows.length / PAGE_SIZE))
-
-  const displayRows = filter === 'live' ? livePageRows : pageRows
-  const displayLoading = filter === 'live' ? false : pageLoading
-
-  const showPagination =
-    filter === 'live'
-      ? liveRows.length > PAGE_SIZE
-      : nonLiveSortedRows.length > PAGE_SIZE
-
-  const rangeStart =
-    displayRows.length === 0 ? 0 : pageIndex * PAGE_SIZE + 1
-  const rangeEnd = pageIndex * PAGE_SIZE + displayRows.length
+  const rangeStart = pageRows.length === 0 ? 0 : pageIndex * PAGE_SIZE + 1
+  const rangeEnd = pageIndex * PAGE_SIZE + pageRows.length
 
   const emptyMessage =
     filter === 'live'
@@ -237,6 +215,9 @@ export function PublicMatchesPage() {
       : filter === 'upcoming'
         ? 'No upcoming public matches.'
         : 'No completed public matches yet.'
+
+  const loading = snapshotStatus === 'loading'
+  const error = snapshotStatus === 'error' ? snapshotError : null
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-4 py-2">
@@ -258,102 +239,48 @@ export function PublicMatchesPage() {
       </div>
 
       <div className="space-y-4 pt-1">
-        {filter === 'live' && (
-          <>
-            {liveError && (
-              <p className="text-sm text-destructive" role="alert">
-                {liveError}
-              </p>
-            )}
-            {!liveError && (
-              <ul className="space-y-4">
-                {livePageRows.map((m) => (
-                  <li key={m.id}>
-                    <LiveMatchListCard match={m} />
-                  </li>
-                ))}
-              </ul>
-            )}
-            {!liveError && livePageRows.length === 0 && (
-              <p className="py-8 text-center text-sm text-muted-foreground">{emptyMessage}</p>
-            )}
-          </>
+        {loading && (
+          <div
+            className="flex items-center gap-2 py-6 text-muted-foreground"
+            role="status"
+            aria-live="polite"
+          >
+            <Spinner size="md" />
+            <span>Loading…</span>
+          </div>
         )}
 
-        {filter === 'upcoming' && (
-          <>
-            {pageLoading && (
-              <div
-                className="flex items-center gap-2 py-6 text-muted-foreground"
-                role="status"
-                aria-live="polite"
-              >
-                <Spinner size="md" />
-                <span>Loading…</span>
-              </div>
-            )}
-            {!pageLoading && pageError && (
-              <p className="text-sm text-destructive" role="alert">
-                {pageError}
-              </p>
-            )}
-            {!pageLoading && !pageError && (
-              <ul className="space-y-4">
-                {pageRows.map((m) => (
-                  <li key={m.id}>
-                    <PublicUpcomingMatchCard match={m} />
-                  </li>
-                ))}
-              </ul>
-            )}
-            {!pageLoading && !pageError && pageRows.length === 0 && (
-              <p className="py-8 text-center text-sm text-muted-foreground">{emptyMessage}</p>
-            )}
-          </>
+        {error && (
+          <p className="text-sm text-destructive" role="alert">
+            {error}
+          </p>
         )}
 
-        {filter === 'completed' && (
+        {!loading && !error && (
           <>
-            {pageLoading && (
-              <div
-                className="flex items-center gap-2 py-6 text-muted-foreground"
-                role="status"
-                aria-live="polite"
-              >
-                <Spinner size="md" />
-                <span>Loading…</span>
-              </div>
-            )}
-            {!pageLoading && pageError && (
-              <p className="text-sm text-destructive" role="alert">
-                {pageError}
-              </p>
-            )}
-            {!pageLoading && !pageError && (
-              <ul className="space-y-4">
-                {pageRows.map((m) => (
-                  <li key={m.id}>
-                    <LiveMatchListCard match={m} replayMode="completed" />
-                  </li>
-                ))}
-              </ul>
-            )}
-            {!pageLoading && !pageError && pageRows.length === 0 && (
+            <ul className="space-y-4">
+              {pageRows.map((m) => (
+                <li key={m.id}>
+                  <PublicMatchCardRow m={m} />
+                </li>
+              ))}
+            </ul>
+            {pageRows.length === 0 && (
               <p className="py-8 text-center text-sm text-muted-foreground">{emptyMessage}</p>
             )}
           </>
         )}
       </div>
 
-      {showPagination && displayRows.length > 0 && (
+      {showPagination && pageRows.length > 0 && !loading && !error && (
         <nav
           className="mt-6 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between"
           aria-label="Match list pages"
         >
           <span className="text-xs text-muted-foreground">
             Showing {rangeStart}–{rangeEnd}
-            {filter === 'live' && liveRows.length > 0 && (
-              <span className="text-muted-foreground"> · {liveRows.length} total</span>
+            {activeList.length > 0 && (
+              <span className="text-muted-foreground"> · {activeList.length} total</span>
             )}
           </span>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
@@ -361,22 +288,20 @@ export function PublicMatchesPage() {
               type="button"
               variant="ghost"
               size="sm"
-              disabled={pageIndex === 0 || displayLoading}
+              disabled={pageIndex === 0 || loading}
               onClick={() => setPageIndex((p) => Math.max(0, p - 1))}
             >
               Previous
             </Button>
             <span className="text-xs text-muted-foreground">
               Page {pageIndex + 1}
-              {filter === 'live' && liveTotalPages > 1 ? ` / ${liveTotalPages}` : ''}
+              {totalPages > 1 ? ` / ${totalPages}` : ''}
             </span>
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              disabled={
-                displayLoading || (filter === 'live' ? !liveHasNextPage : !nonLiveHasNextPage)
-              }
+              disabled={loading || !hasNextPage}
               onClick={() => setPageIndex((p) => p + 1)}
             >
               Next

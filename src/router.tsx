@@ -13,7 +13,9 @@ import { MatchFormPage } from './pages/MatchFormPage'
 import { MatchOverlayManagePage } from './pages/MatchOverlayManagePage'
 import { MatchSquadsPage } from './pages/MatchSquadsPage'
 import { MatchesPage } from './pages/MatchesPage'
+import { MyStatsPage } from './pages/MyStatsPage'
 import { PublicLivePage } from './pages/PublicLivePage'
+import { PublicPlayerStatsPage } from './pages/PublicPlayerStatsPage'
 import { PublicOverlayPage } from './pages/PublicOverlayPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { ScoreMatchPage } from './pages/ScoreMatchPage'
@@ -25,6 +27,7 @@ import { TournamentDetailPage } from './pages/TournamentDetailPage'
 import { TournamentNewPage } from './pages/TournamentNewPage'
 import { TournamentsPage } from './pages/TournamentsPage'
 import { TournamentStatsPage } from './pages/TournamentStatsPage'
+import { TeamJoinInvitePage } from './pages/TeamJoinInvitePage'
 
 export const router = createBrowserRouter([
   /** Full-screen transparent OBS/browser-source page — no PublicLayout chrome. */
@@ -36,6 +39,7 @@ export const router = createBrowserRouter([
       { index: true, element: <PublicMatchesPage /> },
       { path: 'matches', element: <Navigate to="/" replace /> },
       { path: 'live/:publicId', element: <PublicLivePage /> },
+      { path: 'player/:playerId', element: <PublicPlayerStatsPage /> },
       { path: 'tournaments', element: <PublicTournamentsPage /> },
       { path: 'tournaments/:id', element: <PublicTournamentDetailPage /> },
     ],
@@ -47,6 +51,7 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute />,
     children: [
       { path: 'complete-profile', element: <CompleteProfilePage /> },
+      { path: 'join/team/:token', element: <TeamJoinInvitePage /> },
       {
         element: <RequireCompleteProfile />,
         children: [
@@ -55,6 +60,7 @@ export const router = createBrowserRouter([
             children: [
               { index: true, element: <Navigate to="/" replace /> },
               { path: 'profile', element: <ProfilePage /> },
+              { path: 'my-stats', element: <MyStatsPage /> },
               { path: 'teams', element: <TeamsPage /> },
               { path: 'teams/new', element: <UserTeamCreatePage /> },
               { path: 'teams/:teamId', element: <UserTeamEditPage /> },

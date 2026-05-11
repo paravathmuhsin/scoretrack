@@ -1,13 +1,8 @@
 import { Link } from 'react-router-dom'
 import { useTournamentListingMeta } from '../hooks/useTournamentListingMeta'
 import { formatMatchListingSchedule, teamAbbrevFromName } from '../lib/publicMatchCardUtils'
+import { teamAvatarLabel } from '../lib/teamAvatarLabel'
 import type { MatchDoc } from '../types/models'
-
-function teamCircleInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (parts.length >= 2) return (parts[0]![0]! + parts[1]![0]!).toUpperCase()
-  return (parts[0] ?? '?').slice(0, 2).toUpperCase()
-}
 
 type Props = { match: { id: string } & MatchDoc }
 
@@ -28,7 +23,7 @@ export function PublicUpcomingMatchCard({ match }: Props) {
             {[match.home, match.away].map((side, i) => (
               <div key={i} className="match-scorecard-listing-team-line">
                 <span className="match-scorecard-avatar" aria-hidden>
-                  {teamCircleInitials(side.name)}
+                  {teamAvatarLabel(side)}
                 </span>
                 <span className="match-scorecard-teamname">{teamAbbrevFromName(side.name)}</span>
               </div>

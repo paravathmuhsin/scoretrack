@@ -1,6 +1,6 @@
 import { ArrowRight, Eye, EyeOff, Lock, Mail, Smartphone, User } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { getAuthErrorMessage } from '../auth/authErrors'
 import { useAuth } from '../auth/useAuth'
@@ -8,14 +8,18 @@ import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { BtnPendingLabel } from '../components/Spinner'
-import { MIN_PROFILE_NAME_LEN } from '../lib/profileComplete'
+import { MAX_DISPLAY_NAME_LEN, MIN_PROFILE_NAME_LEN } from '../lib/profileComplete'
 import { MOBILE_TEN_DIGIT_MSG, normalizePhoneDigits, parseToTenDigitMobile } from '../lib/phoneDigits'
+import { safePostAuthPath, withRedirectQuery } from '../lib/safeRedirect'
 
 export function RegisterPage() {
   const { signUp } = useAuth()
   const nav = useNavigate()
+  const [searchParams] = useSearchParams()
+  const redirectAfterAuth = safePostAuthPath(searchParams.get('redirect'))
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [fullName, setFullName] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [mobile, setMobile] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -31,9 +35,18 @@ export function RegisterPage() {
       toast.warning('Enter a password (at least 6 characters).')
       return
     }
+    const fn = fullName.trim()
+    if (fn.length < MIN_PROFILE_NAME_LEN) {
+      toast.warning(`Enter your full name (at least ${MIN_PROFILE_NAME_LEN} characters).`)
+      return
+    }
     const dn = displayName.trim()
     if (dn.length < MIN_PROFILE_NAME_LEN) {
-      toast.warning(`Enter your name (at least ${MIN_PROFILE_NAME_LEN} characters).`)
+      toast.warning(`Enter a display name (at least ${MIN_PROFILE_NAME_LEN} characters).`)
+      return
+    }
+    if (dn.length > MAX_DISPLAY_NAME_LEN) {
+      toast.warning(`Display name must be at most ${MAX_DISPLAY_NAME_LEN} characters.`)
       return
     }
     const ten = parseToTenDigitMobile(mobile)
@@ -43,8 +56,8 @@ export function RegisterPage() {
     }
     setBusy(true)
     try {
-      await signUp(email, password, dn, ten)
-      nav('/')
+      await signUp(email, password, fn, dn, ten)
+      nav(redirectAfterAuth, { replace: true })
     } catch (err) {
       toast.error(getAuthErrorMessage(err))
     } finally {
@@ -80,20 +93,41 @@ export function RegisterPage() {
             className="mt-8 space-y-4 rounded-xl border border-[#d6d7db] bg-white p-5 shadow-[0_12px_40px_rgba(15,23,42,0.06)] sm:p-6"
           >
             <div className="block">
+              <Label htmlFor="register-full-name" className="sr-only">
+                Full name
+              </Label>
+              <div className="flex h-14 items-center gap-3 rounded-lg border border-[#d6d7db] bg-white px-4">
+                <User className="h-[19px] w-[19px] shrink-0 text-primary" aria-hidden />
+                <Input
+                  id="register-full-name"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  autoComplete="name"
+                  required
+                  minLength={MIN_PROFILE_NAME_LEN}
+                  disabled={busy}
+                  placeholder="Enter your full name"
+                  className="h-auto border-transparent bg-transparent px-0 py-0 shadow-none outline-none ring-0 focus:border-0 focus:outline-none focus:ring-0 focus-visible:!border-0 focus-visible:!ring-0 focus-visible:outline-none aria-invalid:!border-0 aria-invalid:!ring-0 text-[1.02rem] font-medium text-slate-900 placeholder:font-normal placeholder:text-[#8b909a]"
+                />
+              </div>
+            </div>
+
+            <div className="block">
               <Label htmlFor="register-display-name" className="sr-only">
-                Display name
+                Display name (max {MAX_DISPLAY_NAME_LEN} characters)
               </Label>
               <div className="flex h-14 items-center gap-3 rounded-lg border border-[#d6d7db] bg-white px-4">
                 <User className="h-[19px] w-[19px] shrink-0 text-primary" aria-hidden />
                 <Input
                   id="register-display-name"
                   value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  autoComplete="name"
+                  onChange={(e) => setDisplayName(e.target.value.slice(0, MAX_DISPLAY_NAME_LEN))}
+                  autoComplete="nickname"
                   required
                   minLength={MIN_PROFILE_NAME_LEN}
+                  maxLength={MAX_DISPLAY_NAME_LEN}
                   disabled={busy}
-                  placeholder="Enter your display name"
+                  placeholder="Short display name (max 12)"
                   className="h-auto border-transparent bg-transparent px-0 py-0 shadow-none outline-none ring-0 focus:border-0 focus:outline-none focus:ring-0 focus-visible:!border-0 focus-visible:!ring-0 focus-visible:outline-none aria-invalid:!border-0 aria-invalid:!ring-0 text-[1.02rem] font-medium text-slate-900 placeholder:font-normal placeholder:text-[#8b909a]"
                 />
               </div>
@@ -194,7 +228,10 @@ export function RegisterPage() {
 
             <p className="pt-1 text-center text-sm text-slate-600">
               Already have an account?{' '}
-              <Link to="/login" className="font-semibold !text-primary hover:!text-primary/80">
+              <Link
+                to={withRedirectQuery('/login', searchParams.get('redirect'))}
+                className="font-semibold !text-primary hover:!text-primary/80"
+              >
                 Sign in
               </Link>
             </p>

@@ -14,6 +14,19 @@ function normalizeHowOut(how: string): string {
   return how
 }
 
+/** Caught-and-bowler: same player as fielder and bowler. */
+function isCaughtAndBowled(
+  d: BatterDismissalSnap | undefined,
+  bowlerName: string,
+  fielderDisp: string,
+): boolean {
+  if (!d?.bowlerId) return false
+  if (d.fielderId && d.fielderId === d.bowlerId) return true
+  const f = fielderDisp.trim()
+  const b = bowlerName.trim()
+  return Boolean(f && b && f === b)
+}
+
 /** Second-line extras from wides / no-balls when the wicket fell on an extra delivery. */
 function dismissalExtrasParenthetical(d: BatterDismissalSnap): string | null {
   if (d.delivery === 'legal') return null
@@ -25,8 +38,9 @@ function dismissalExtrasParenthetical(d: BatterDismissalSnap): string | null {
 }
 
 /**
- * Cricket-style batting detail under the name: `c Fielder b Bowler`, `not out`,
- * plus extras `(nb 4)` / `(w 7)` when the wicket ball was a wide or no-ball.
+ * Cricket-style batting detail under the name (public scorecard / PDF / overlay source):
+ * `c Fielder b Bowler`, `c & b Bowler`, `ht b Bowler`, `retired`, `not out`, `b Bowler`,
+ * `run out (Fielder)`, `st WK b Bowler`, plus extras `(nb 4)` / `(w 7)` when relevant.
  */
 export function formatBattingScorecardStatus(
   match: MatchDoc,
@@ -34,11 +48,11 @@ export function formatBattingScorecardStatus(
   inn: InningsSnapshot,
   playerId: string,
 ): string {
-  if (inn.retiredOffField.has(playerId)) return 'Retired hurt'
+  if (inn.retiredOffField.has(playerId)) return 'retired'
   if (!bs?.out) return 'not out'
 
   const howRaw = bs.how ?? 'out'
-  if (howRaw === 'Retired hurt') return 'Retired hurt'
+  if (howRaw === 'Retired hurt') return 'retired'
 
   const how = normalizeHowOut(howRaw)
   const d = bs.dismissal
@@ -50,7 +64,11 @@ export function formatBattingScorecardStatus(
   let core = howRaw
   switch (how) {
     case 'Catch out':
-      core = fielderDisp ? `c ${fielderDisp} b ${bowlerName}` : `c — b ${bowlerName}`
+      if (isCaughtAndBowled(d, bowlerName, fielderDisp)) {
+        core = `c & b ${bowlerName}`
+      } else {
+        core = fielderDisp ? `c ${fielderDisp} b ${bowlerName}` : `c — b ${bowlerName}`
+      }
       break
     case 'Bowled':
       core = `b ${bowlerName}`
@@ -65,7 +83,7 @@ export function formatBattingScorecardStatus(
       core = fielderDisp ? `run out (${fielderDisp})` : 'run out'
       break
     case 'Hit wicket':
-      core = `hit wicket b ${bowlerName}`
+      core = `ht b ${bowlerName}`
       break
     default:
       core = howRaw

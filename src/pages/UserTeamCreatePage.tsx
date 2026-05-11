@@ -41,6 +41,7 @@ export function UserTeamCreatePage() {
 
       <UserTeamForm
         submitLabel="Create team"
+        requireLocation
         onSubmit={async (p) => {
           await addDoc(collection(getDb(), 'users', user.uid, 'teams'), {
             name: p.name,

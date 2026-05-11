@@ -697,7 +697,7 @@ select {
 .record-ball-shell {
   display: grid;
   grid-template-columns: 6.75rem 1fr;
-  gap: 0.9rem;
+  gap: 0.6rem;
   align-items: start;
 }
 
@@ -705,6 +705,8 @@ select {
   border: 1px solid #fecdd3;
   background: linear-gradient(180deg, #fff1f2 0%, #fff 58%);
   box-shadow: 0 2px 12px rgba(190, 24, 93, 0.08);
+  padding: 0.8rem 0.95rem;
+  gap: 0.5rem;
 }
 
 .record-ball-card h2 {
@@ -740,17 +742,17 @@ select {
 .record-ball-main {
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
+  gap: 0.55rem;
   min-width: 0;
 }
 
 .record-this-over {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0.35rem 0.75rem;
   padding: 0.15rem 0 0.25rem;
-  margin-bottom: 0.45rem;
+  margin-bottom: 0;
 }
 
 .record-this-over-label {
@@ -760,9 +762,43 @@ select {
 
 .record-this-over-pills {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0.45rem;
   align-items: center;
+  min-width: 0;
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+  padding-right: 0.75rem;
+  scrollbar-width: thin;
+  scrollbar-color: #fda4af transparent;
+}
+
+.record-this-over-pills::after {
+  content: '';
+  position: sticky;
+  right: 0;
+  width: 1.1rem;
+  height: 100%;
+  margin-left: auto;
+  pointer-events: none;
+  background: linear-gradient(to right, rgba(255, 255, 255, 0), #fff 72%);
+}
+
+.record-this-over-pills::-webkit-scrollbar {
+  height: 5px;
+}
+
+.record-this-over-pills::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.record-this-over-pills::-webkit-scrollbar-thumb {
+  background: #fda4af;
+  border-radius: 999px;
 }
 
 .record-ball-modifiers {
@@ -818,6 +854,10 @@ select {
     grid-template-columns: 1fr;
   }
 
+  .record-ball-card {
+    padding: 0.7rem 0.75rem;
+  }
+
   .record-ball-sidebar {
     flex-direction: row;
     flex-wrap: wrap;
@@ -826,11 +866,23 @@ select {
   .record-ball-sidebar .btn {
     width: auto;
     flex: 1;
-    min-width: 5.2rem;
+    min-width: 4.25rem;
+    min-height: 2.3rem;
+    padding: 0.38rem 0.55rem;
+    font-size: 0.78rem;
+    border-radius: 8px;
   }
 
   .record-ball-modifiers {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.3rem;
+  }
+
+  .record-ball-chk {
+    min-height: 3.45rem;
+    gap: 0.2rem;
+    font-size: 0.73rem;
+    border-radius: 8px;
   }
 }
 
@@ -855,11 +907,21 @@ select {
 }
 
 .score-live-summary-top {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  gap: 0.35rem;
-  margin-bottom: 0.28rem;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.42rem;
+  padding-bottom: 0.72rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+/* Stacked rows: both teams read left-to-right */
+.score-live-summary-top .score-live-side--away {
+  text-align: left;
+}
+
+.score-live-summary-top .score-live-side--away .score-live-side-main {
+  justify-content: flex-start;
 }
 
 .score-live-side {
@@ -879,26 +941,44 @@ select {
   opacity: 0.52;
 }
 
+/* Match finished: de-emphasize losing side in live summary (slightly richer than completed-innings) */
+.score-live-summary-top .score-live-side--result-loser {
+  opacity: 0.62;
+}
+
+.score-live-summary-top .score-live-side--result-loser .score-live-side-label {
+  color: #64748b;
+}
+
+.score-live-summary-top .score-live-side--result-loser .score-live-side-rw,
+.score-live-summary-top .score-live-side--result-loser .score-live-side-overs,
+.score-live-summary-top .score-live-side--result-loser .score-live-side-score {
+  color: #475569;
+}
+
 .score-live-side-label {
-  display: block;
-  margin-bottom: 0.12rem;
-  font-size: 0.65rem;
+  flex: 1;
+  min-width: 0;
+  font-size: 0.72rem;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   font-weight: 800;
   color: #b91c1c;
-  line-height: 1.15;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .score-live-side-main {
   display: flex;
   align-items: center;
-  gap: 0.38rem;
+  gap: 0.45rem;
   min-width: 0;
 }
 
 .score-live-side--away .score-live-side-main {
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 
 .score-live-side-avatar {
@@ -919,12 +999,29 @@ select {
   background: #0f172a;
 }
 
+.score-live-side-avatar--compact {
+  font-size: 0.62rem;
+  letter-spacing: -0.03em;
+}
+
 .score-live-side-score {
-  font-size: 1.02rem;
-  font-weight: 800;
-  color: #0f172a;
+  margin-left: auto;
+  flex-shrink: 0;
   line-height: 1.12;
   white-space: nowrap;
+}
+
+.score-live-side-rw {
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #0f172a;
+}
+
+.score-live-side-overs {
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: #334155;
 }
 
 .score-live-vs {
@@ -1104,7 +1201,7 @@ select {
 
 .score-live-table--batting th:first-child,
 .score-live-table--batting td:first-child {
-  width: 52%;
+  width: 50%;
   min-width: 0;
 }
 
@@ -1125,7 +1222,7 @@ select {
 
 .score-live-table--batting th:nth-child(6),
 .score-live-table--batting td:nth-child(6) {
-  width: 15%;
+  width: 17%;
 }
 
 .score-live-table--batting th,
@@ -1149,7 +1246,9 @@ select {
 .score-live-table--batting th:nth-child(4),
 .score-live-table--batting td:nth-child(4),
 .score-live-table--batting th:nth-child(5),
-.score-live-table--batting td:nth-child(5) {
+.score-live-table--batting td:nth-child(5),
+.score-live-table--batting th:nth-child(6),
+.score-live-table--batting td:nth-child(6) {
   padding-left: 0.12rem;
   padding-right: 0.12rem;
 }
@@ -1234,6 +1333,21 @@ select {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Live batting/bowling: center stat headers & cells; player name column stays left */
+.score-live-table--batting th:not(:first-child),
+.score-live-table--batting td:not(:first-child),
+.score-live-table--bowling th:not(:first-child),
+.score-live-table--bowling td:not(:first-child) {
+  text-align: center;
+}
+
+.score-live-table--batting th:first-child,
+.score-live-table--batting td:first-child,
+.score-live-table--bowling th:first-child,
+.score-live-table--bowling td:first-child {
+  text-align: left;
 }
 
 .score-live-name {
@@ -1352,7 +1466,7 @@ select {
 
 /* /live index — card links match IPL-style score rows */
 .live-match-list li {
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
 }
 
 .live-match-card-link {
@@ -1447,6 +1561,10 @@ html[data-obs-overlay='true'] body #root {
 /** No large card: score bar is the only primary — anchor to bottom. */
 .obs-overlay-stack--scorebar-only {
   justify-content: flex-end;
+  padding-left: 2rem;
+  padding-right: 2rem;
+  padding-bottom: 1.75rem;
+  box-sizing: border-box;
 }
 
 /** Batting / bowling / summary primary — score bar hidden; center the card. */
@@ -1463,7 +1581,6 @@ html[data-obs-overlay='true'] body #root {
   min-height: 0;
   width: 100%;
   padding: 0.5rem 0;
-  /* Allow .obs-sc-logo (top: -12px) to paint above the card — overflow:hidden clipped the round badge */
   overflow: visible;
 }
 
@@ -1538,6 +1655,12 @@ html[data-obs-overlay='true'] body #root {
   max-height: min(440px, 42vh);
 }
 
+/** Batting / bowling overlay: tall table region (overrides generic card-slot cap). */
+.obs-overlay-card-slot .obs-sc--batting .obs-sc-body-scroll,
+.obs-overlay-card-slot .obs-sc--bowling .obs-sc-body-scroll {
+  max-height: min(1150px, calc(100svh - 7rem));
+}
+
 /* Center batting scorecard (OBS overlay middle — palette matches score bar: navy / pink / cyan / red) */
 .obs-sc {
   --obs-navy: #1a1a40;
@@ -1548,9 +1671,105 @@ html[data-obs-overlay='true'] body #root {
   width: min(920px, 100%);
   max-width: 100%;
   box-sizing: border-box;
-  /* Reserve space for .obs-sc-logo (absolute top: -12px) so layout includes the round badge */
   padding-top: 14px;
   overflow: visible;
+}
+
+/** Batting & bowling overlay cards: shared frame / header scale; match summary card is wider for result copy. */
+.obs-sc--batting,
+.obs-sc--bowling {
+  width: min(1380px, 100%);
+  padding-top: 0;
+}
+
+.obs-match-summary-card {
+  width: min(1680px, 100%);
+  padding-top: 0;
+}
+
+.obs-sc--batting .obs-sc-frame,
+.obs-sc--bowling .obs-sc-frame,
+.obs-match-summary-card .obs-sc-frame {
+  padding: 4px 6px;
+  border-radius: 36px;
+}
+
+.obs-sc--batting .obs-sc-inner,
+.obs-sc--bowling .obs-sc-inner,
+.obs-match-summary-card .obs-sc-inner {
+  border-radius: 30px;
+}
+
+.obs-sc--batting .obs-sc-head-primary,
+.obs-sc--bowling .obs-sc-head-primary,
+.obs-match-summary-card .obs-sc-head-primary {
+  padding: 20px 40px 14px;
+  font-size: 42px;
+}
+
+.obs-sc--batting .obs-sc-table:not(.obs-sc-table--bowl) thead .obs-sc-thead-row--bat th {
+  padding: 10px 28px 12px;
+}
+
+.obs-sc--batting .obs-sc-table:not(.obs-sc-table--bowl) thead .obs-sc-th-meta {
+  font-size: 22px;
+}
+
+.obs-sc--batting thead .obs-sc-th,
+.obs-sc--bowling thead .obs-sc-th {
+  font-size: 22px;
+  letter-spacing: 0.14em;
+}
+
+.obs-sc--batting .obs-sc-table:not(.obs-sc-table--bowl) thead .obs-sc-th-runs,
+.obs-sc--batting .obs-sc-table:not(.obs-sc-table--bowl) thead .obs-sc-th-balls {
+  width: 144px;
+}
+
+.obs-sc--batting .obs-sc-table col.obs-sc-col-runs,
+.obs-sc--batting .obs-sc-table col.obs-sc-col-balls {
+  width: 144px;
+}
+
+.obs-sc--batting .obs-sc-body-scroll,
+.obs-sc--bowling .obs-sc-body-scroll {
+  /* ~12 squad rows + thead without inner scroll on 1080p-class viewports */
+  max-height: min(1150px, calc(100svh - 7rem));
+}
+
+.obs-sc--batting .obs-sc-body-scroll::-webkit-scrollbar,
+.obs-sc--bowling .obs-sc-body-scroll::-webkit-scrollbar {
+  width: 16px;
+  height: 16px;
+}
+
+.obs-sc--batting .obs-sc-row td,
+.obs-sc--bowling .obs-sc-row td {
+  padding: 12px 28px;
+  font-size: 26px;
+  line-height: 1.2;
+}
+
+.obs-sc--batting .obs-sc-how {
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.obs-sc--batting .obs-sc-runs,
+.obs-sc--batting .obs-sc-balls {
+  width: 144px;
+}
+
+.obs-sc--batting .obs-sc-footer,
+.obs-sc--bowling .obs-sc-footer {
+  gap: 24px;
+  padding: 14px 36px;
+  font-size: 24px;
+}
+
+.obs-sc--batting .obs-sc-footer-total strong,
+.obs-sc--bowling .obs-sc-footer-total strong {
+  font-size: 38px;
 }
 
 .obs-sc-frame {
@@ -1892,6 +2111,86 @@ html[data-obs-overlay='true'] body #root {
   width: auto;
 }
 
+/** Bowling table: match batting thead padding + scale; wider stat cols (2× base bowl cols). */
+.obs-sc--bowling .obs-sc-table--bowl thead .obs-sc-thead-row--bowl th {
+  padding: 10px 28px 12px;
+}
+
+.obs-sc--bowling .obs-sc-table--bowl thead .obs-sc-th-meta-bowl {
+  font-size: 22px;
+}
+
+.obs-sc--bowling .obs-sc-table--bowl thead .obs-sc-th-o,
+.obs-sc--bowling .obs-sc-table--bowl thead .obs-sc-th-m,
+.obs-sc--bowling .obs-sc-table--bowl thead .obs-sc-th-r,
+.obs-sc--bowling .obs-sc-table--bowl thead .obs-sc-th-w,
+.obs-sc--bowling .obs-sc-table--bowl thead .obs-sc-th-e {
+  font-size: 18px;
+  letter-spacing: 0.06em;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+.obs-sc--bowling .obs-sc-table--bowl col.obs-sc-col-bowl-o {
+  width: 144px;
+}
+
+.obs-sc--bowling .obs-sc-table--bowl col.obs-sc-col-bowl-m {
+  width: 184px;
+}
+
+.obs-sc--bowling .obs-sc-table--bowl col.obs-sc-col-bowl-r {
+  width: 128px;
+}
+
+.obs-sc--bowling .obs-sc-table--bowl col.obs-sc-col-bowl-w {
+  width: 112px;
+}
+
+.obs-sc--bowling .obs-sc-table--bowl col.obs-sc-col-bowl-e {
+  width: 136px;
+}
+
+.obs-sc--bowling .obs-sc-bowl-num {
+  font-size: 26px;
+}
+
+.obs-sc--bowling .obs-sc-table--bowl .obs-sc-row td.obs-sc-bowl-num {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+.obs-sc--bowling .obs-sc-fow {
+  gap: 20px;
+  padding: 16px 28px 18px;
+}
+
+.obs-sc--bowling .obs-sc-fow-label {
+  font-size: 18px;
+  padding-top: 6px;
+}
+
+.obs-sc--bowling .obs-sc-fow-chips {
+  gap: 18px 24px;
+}
+
+.obs-sc--bowling .obs-sc-fow-chip {
+  min-width: 52px;
+  gap: 6px;
+}
+
+.obs-sc--bowling .obs-sc-fow-ord {
+  font-size: 18px;
+}
+
+.obs-sc--bowling .obs-sc-fow-score {
+  font-size: 32px;
+}
+
+.obs-sc--bowling .obs-sc-fow-empty {
+  font-size: 22px;
+}
+
 .obs-sc-fow {
   display: flex;
   flex-direction: row;
@@ -1948,39 +2247,45 @@ html[data-obs-overlay='true'] body #root {
   color: rgba(255, 255, 255, 0.45);
 }
 
-/* Match summary primary (OBS overlay) — wider than batting/bowling for headline + score lines */
-.obs-sc.obs-match-summary-card {
-  width: min(1180px, 100%);
-}
-
-/* Match summary primary (OBS overlay) */
+/* Match summary (OBS overlay) — same chrome as batting/bowling; scaled headline + lines */
 .obs-match-summary-head.obs-sc-head-secondary {
   grid-template-columns: minmax(0, 1fr);
+  padding: 10px 28px 12px;
+  margin: 0;
+}
+
+.obs-match-summary-card .obs-match-summary-head .obs-sc-head-meta {
+  grid-column: 1 / -1;
+  font-size: 38px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.94);
 }
 
 .obs-match-summary-body {
-  padding: 20px 18px 22px;
-  min-height: 120px;
+  padding: 24px 36px 28px;
+  min-height: 200px;
 }
 
 .obs-match-summary-lines {
   margin: 0;
-  padding: 0 0 0 1.1rem;
-  font-size: 16px;
+  padding: 0 0 0 2rem;
+  font-size: 32px;
   font-weight: 700;
-  line-height: 1.55;
+  line-height: 1.45;
   color: #fff;
   letter-spacing: 0.02em;
 }
 
 .obs-match-summary-lines li {
-  margin-bottom: 0.35rem;
+  margin-bottom: 0.65rem;
 }
 
 .obs-match-summary-placeholder {
   margin: 0;
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: 38px;
+  line-height: 1.4;
   color: rgba(255, 255, 255, 0.72);
 }
 
@@ -1990,10 +2295,10 @@ html[data-obs-overlay='true'] body #root {
   flex-direction: row;
   align-items: stretch;
   align-self: stretch;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
   max-width: 100%;
-  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.12));
+  filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.12));
   font-family:
     'Geist Variable',
     ui-sans-serif,
@@ -2003,8 +2308,8 @@ html[data-obs-overlay='true'] body #root {
 
 .obs-score-bar__segment {
   background: #ffffff;
-  border-radius: 14px;
-  padding: 10px 14px;
+  border-radius: 28px;
+  padding: 10px 18px;
   box-sizing: border-box;
 }
 
@@ -2012,43 +2317,48 @@ html[data-obs-overlay='true'] body #root {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 96px;
-  padding-left: 20px;
-  padding-right: 20px;
-  font-size: 17px;
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 168px;
+  padding-left: 8px;
+  padding-right: 8px;
+  font-size: 34px;
   font-weight: 800;
   color: #000000;
   letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .obs-score-bar__batters {
-  flex: 1 1 340px;
+  flex: 1 1 680px;
   min-width: 0;
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 6px;
-  padding: 12px 16px;
+  padding: 12px 18px;
 }
 
 .obs-batter-row {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
-  font-size: 14px;
+  gap: 24px;
+  font-size: 28px;
   line-height: 1.2;
 }
 
 .obs-batter-play {
   display: inline-flex;
   align-items: baseline;
-  gap: 6px;
+  gap: 12px;
   min-width: 0;
 }
 
 .obs-batter-tri {
-  font-size: 10px;
+  font-size: 20px;
   color: #000;
   flex-shrink: 0;
 }
@@ -2070,23 +2380,23 @@ html[data-obs-overlay='true'] body #root {
 }
 
 .obs-batter-nums strong {
-  font-size: 18px;
+  font-size: 36px;
   font-weight: 800;
 }
 
 .obs-batter-balls {
   font-weight: 600;
-  font-size: 14px;
+  font-size: 28px;
   opacity: 0.85;
 }
 
 .obs-score-bar__center {
-  flex: 0 0 300px;
+  flex: 0 0 660px;
   align-self: stretch;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border-radius: 14px;
+  border-radius: 28px;
   overflow: hidden;
 }
 
@@ -2095,36 +2405,58 @@ html[data-obs-overlay='true'] body #root {
   display: flex;
   flex-direction: row;
   align-items: stretch;
-  min-height: 52px;
+  min-height: 96px;
 }
 
 .obs-score-bar__pink {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   background: #d81b60;
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 8px 10px;
+  gap: 20px;
+  padding: 8px 14px;
   font-weight: 800;
-  font-size: 16px;
+  font-size: 52px;
+  font-variant-numeric: tabular-nums;
+}
+
+.obs-score-bar__pink-bat {
+  font-weight: 800;
+}
+
+.obs-score-bar__pink-score-group {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: nowrap;
+  gap: 10px;
+  min-width: 0;
+}
+
+.obs-score-bar__pink-target {
+  font-size: 0.58em;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  opacity: 0.95;
+  white-space: nowrap;
 }
 
 .obs-score-bar__cyan {
-  flex: 0 0 132px;
-  min-width: 118px;
+  flex: 0 0 152px;
+  min-width: 140px;
   min-height: 0;
-  padding-left: 8px;
-  padding-right: 8px;
+  padding-left: 10px;
+  padding-right: 10px;
   background: #00bcd4;
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 800;
-  font-size: 17px;
+  font-size: 34px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -2134,19 +2466,19 @@ html[data-obs-overlay='true'] body #root {
   background: #1a1a40;
   color: #fff;
   text-align: center;
-  padding: 8px 10px;
-  font-size: 12px;
+  padding: 6px 14px;
+  font-size: 24px;
   font-weight: 700;
   letter-spacing: 0.06em;
 }
 
 .obs-score-bar__bowler {
-  flex: 1 1 380px;
+  flex: 1 1 760px;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 12px 16px;
+  padding: 12px 18px;
 }
 
 .obs-bowler-stack {
@@ -2189,7 +2521,7 @@ html[data-obs-overlay='true'] body #root {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
+  border-radius: 20px;
   pointer-events: none;
   animation: obs-bowler-flash-enter 0.32s ease-out forwards;
   backdrop-filter: blur(3px);
@@ -2217,13 +2549,13 @@ html[data-obs-overlay='true'] body #root {
 }
 
 .obs-bowler-flash__text {
-  font-size: clamp(1.35rem, 3.8vw, 1.85rem);
+  font-size: clamp(2.7rem, 7.6vw, 3.7rem);
   font-weight: 900;
   letter-spacing: 0.14em;
   color: #fff;
   text-shadow:
-    0 2px 14px rgba(0, 0, 0, 0.35),
-    0 0 28px rgba(255, 255, 255, 0.12);
+    0 4px 28px rgba(0, 0, 0, 0.35),
+    0 0 56px rgba(255, 255, 255, 0.12);
   animation: obs-bowler-flash-blink 0.38s ease-in-out infinite;
 }
 
@@ -2231,12 +2563,12 @@ html[data-obs-overlay='true'] body #root {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
+  gap: 24px;
 }
 
 .obs-bowler-name {
   font-weight: 800;
-  font-size: 14px;
+  font-size: 28px;
   color: #000;
   letter-spacing: 0.04em;
 }
@@ -2244,101 +2576,58 @@ html[data-obs-overlay='true'] body #root {
 .obs-bowler-figs {
   display: flex;
   align-items: baseline;
-  gap: 14px;
+  gap: 28px;
   font-variant-numeric: tabular-nums;
 }
 
 .obs-bowler-wr {
   font-weight: 800;
-  font-size: 16px;
+  font-size: 32px;
 }
 
 .obs-bowler-ov {
   font-weight: 700;
-  font-size: 15px;
+  font-size: 30px;
   opacity: 0.9;
 }
 
 .obs-bowler-balls-wrap {
   position: relative;
+  width: 100%;
   max-width: 100%;
   min-width: 0;
+  overflow: hidden;
+  min-height: 58px;
 }
 
-.obs-bowler-balls-fade {
-  position: absolute;
-  top: 0;
-  bottom: 6px;
-  width: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  transition: opacity 0.18s ease;
-  pointer-events: none;
-  z-index: 2;
-}
-
-.obs-bowler-balls-fade--on {
-  opacity: 1;
-}
-
-.obs-bowler-balls-fade--left {
-  left: 0;
-  background: linear-gradient(to right, rgba(255, 255, 255, 0.97), rgba(255, 255, 255, 0));
-}
-
-.obs-bowler-balls-fade--right {
-  right: 0;
-  background: linear-gradient(to left, rgba(255, 255, 255, 0.97), rgba(255, 255, 255, 0));
-}
-
-.obs-bowler-balls-fade-icon {
-  font-size: 20px;
-  font-weight: 800;
-  color: rgba(26, 26, 64, 0.42);
-  line-height: 1;
+/** Unscaled track; parent applies transform so the row fits without horizontal scroll. */
+.obs-bowler-balls-scale {
+  display: inline-block;
+  vertical-align: top;
 }
 
 .obs-bowler-balls {
   display: flex;
   flex-direction: row;
   flex-wrap: nowrap;
-  gap: 8px;
+  gap: 16px;
   align-items: center;
-  max-width: 100%;
+  width: max-content;
   min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding-bottom: 6px;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(26, 26, 64, 0.45) transparent;
-}
-
-.obs-bowler-balls::-webkit-scrollbar {
-  height: 6px;
-}
-
-.obs-bowler-balls::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.obs-bowler-balls::-webkit-scrollbar-thumb {
-  background: rgba(26, 26, 64, 0.35);
-  border-radius: 999px;
+  padding-bottom: 0;
 }
 
 .obs-ball {
   flex-shrink: 0;
   box-sizing: border-box;
-  min-width: 34px;
-  height: 34px;
-  padding: 0 7px;
+  min-width: 58px;
+  height: 58px;
+  padding: 0 6px;
   border-radius: 9999px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: 28px;
   font-weight: 800;
   color: #fff;
 }
@@ -2355,6 +2644,11 @@ html[data-obs-overlay='true'] body #root {
 .obs-ball--four {
   background: linear-gradient(145deg, #26c6da, #00838f);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  padding: 0 4px;
+  min-width: 50px;
+  height: 58px;
+  font-size: 36px;
+  line-height: 1;
 }
 
 .obs-ball--six {
@@ -2907,7 +3201,9 @@ html[data-obs-overlay='true'] body #root {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: nowrap;
   gap: 0.75rem;
+  margin-bottom: 0.35rem;
 }
 
 .score-page-title-stack {
@@ -2946,6 +3242,8 @@ html[data-obs-overlay='true'] body #root {
 }
 
 .record-ball-card .public-live-ball {
+  min-width: 1.5rem;
+  height: 1.5rem;
   background: #fff;
   border-color: #fda4af;
   color: #881337;
@@ -2982,29 +3280,32 @@ html[data-obs-overlay='true'] body #root {
 }
 
 .score-settings {
+  display: flex;
+  align-items: center;
   position: relative;
   flex-shrink: 0;
   z-index: 25;
 }
 
 .score-settings-trigger {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 3.35rem;
-  height: 3.35rem;
+  align-self: center;
+  width: auto;
+  height: auto;
   padding: 0;
-  border: 1px solid #d5dce9;
-  border-radius: 13px;
-  background: #fff;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: #475569;
   cursor: pointer;
-  box-shadow: 0 1px 8px rgba(15, 23, 42, 0.06);
+  box-shadow: none;
   position: relative;
   z-index: 31;
 }
 .score-settings-trigger:hover {
-  background: #f8fafc;
+  background: transparent;
   color: #0f172a;
 }
 
@@ -3158,22 +3459,47 @@ html[data-obs-overlay='true'] body #root {
   border-bottom: none;
 }
 
+/*
+ * De-emphasized rows (same for completed first innings vs match loser):
+ * whole-row opacity + richer slate on children (reads better than flat gray alone).
+ */
+.match-scorecard-row--completed-innings,
+.match-scorecard-row--loser {
+  opacity: 0.52;
+}
+
+.match-scorecard-row--completed-innings .match-scorecard-teamname,
 .match-scorecard-row--loser .match-scorecard-teamname {
-  color: #64748b;
+  color: #475569;
   font-weight: 600;
 }
 
-.match-scorecard-row--loser .match-scorecard-score {
-  color: #64748b;
-  font-weight: 600;
-}
-
-.match-scorecard-row--loser .match-scorecard-meta-inline {
-  color: #94a3b8;
-}
-
+.match-scorecard-row--completed-innings .match-scorecard-avatar,
 .match-scorecard-row--loser .match-scorecard-avatar {
-  opacity: 0.72;
+  background: linear-gradient(145deg, #e8edf3, #d1dae6);
+  color: #475569;
+}
+
+.match-scorecard-row--completed-innings .match-scorecard-score .match-scorecard-rw,
+.match-scorecard-row--loser .match-scorecard-score .match-scorecard-rw {
+  color: #334155;
+  font-weight: 700;
+}
+
+.match-scorecard-row--completed-innings .match-scorecard-score .match-scorecard-overs,
+.match-scorecard-row--loser .match-scorecard-score .match-scorecard-overs {
+  color: #64748b;
+  font-weight: 600;
+}
+
+.match-scorecard-row--completed-innings .match-scorecard-score,
+.match-scorecard-row--completed-innings .match-scorecard-score .muted,
+.match-scorecard-row--completed-innings .match-scorecard-score .match-scorecard-status,
+.match-scorecard-row--loser .match-scorecard-score,
+.match-scorecard-row--loser .match-scorecard-score .muted,
+.match-scorecard-row--loser .match-scorecard-score .match-scorecard-status {
+  color: #64748b;
+  font-weight: 600;
 }
 
 .match-scorecard-team {
@@ -3245,13 +3571,34 @@ html[data-obs-overlay='true'] body #root {
   font-variant-numeric: tabular-nums;
 }
 
+/* Runs/wickets + optional `(x.y/ov)` in one cell (same strings as score page live summary). */
+.match-scorecard-score--line {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  line-height: 1.25;
+}
+
+.match-scorecard-rw {
+  font-variant-numeric: tabular-nums;
+}
+
+.match-scorecard-overs {
+  margin-left: 0.3em;
+  font-size: 0.76em;
+  font-weight: 600;
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .match-scorecard-result {
   margin: 0.85rem 0 0;
   padding-top: 0.65rem;
   border-top: 1px solid #eef2f7;
   font-size: 0.92rem;
   font-weight: 600;
-  color: #2563eb;
+  color: #64748b;
   line-height: 1.35;
 }
 
@@ -3351,7 +3698,7 @@ a.segmented-filter-tab {
   border-radius: 16px;
   box-shadow: 0 2px 16px rgba(15, 23, 42, 0.06);
   border: 1px solid #eef2f7;
-  padding: 1rem 1.15rem 1.05rem;
+  padding: 0.65rem 0.85rem 0.6rem;
 }
 
 .live-match-card-link .match-scorecard--listing {
@@ -3360,10 +3707,28 @@ a.segmented-filter-tab {
 
 .match-scorecard--listing .match-scorecard-head {
   border-bottom: none;
+  margin-bottom: 0.4rem;
+  padding-bottom: 0.3rem;
 }
 
 .match-scorecard--listing .match-scorecard-row {
   border-bottom: none;
+  padding: 0.28rem 0;
+}
+
+.match-scorecard--listing .match-scorecard-result {
+  margin: 0.5rem 0 0;
+  padding-top: 0.45rem;
+}
+
+.match-scorecard--listing .match-scorecard-livefooter {
+  margin: 0.5rem 0 0;
+  padding-top: 0.45rem;
+}
+
+.match-scorecard--listing .match-scorecard-upcoming-footer {
+  margin: 0.5rem 0 0;
+  padding-top: 0.45rem;
 }
 
 .match-scorecard-kicker-group {
@@ -3414,12 +3779,20 @@ a.segmented-filter-tab {
   padding: 0.35rem 0 0.25rem;
 }
 
+.match-scorecard--listing .match-scorecard-listing-upcoming-body {
+  padding: 0.22rem 0 0.18rem;
+}
+
 .match-scorecard-listing-upcoming-teams {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+}
+
+.match-scorecard--listing .match-scorecard-listing-upcoming-teams {
+  gap: 0.38rem;
 }
 
 .match-scorecard-listing-team-line {
@@ -3478,6 +3851,27 @@ a.segmented-filter-tab {
 .public-live-detail {
   margin-top: 0;
   min-width: 0;
+}
+
+.public-live-player-stats-link {
+  cursor: pointer;
+  color: var(--primary, #2563eb);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+  text-decoration-skip-ink: auto;
+  font-weight: 500;
+}
+
+.public-live-player-stats-link:hover {
+  color: var(--primary, #2563eb);
+  text-decoration-thickness: 2px;
+}
+
+.public-live-player-stats-link:focus-visible {
+  outline: 2px solid var(--primary, #2563eb);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 /* ─── Public live page theme (matches app primary + calm surfaces) ─── */
@@ -3607,14 +4001,24 @@ a.segmented-filter-tab {
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
 }
 
-.public-live-page .public-live-nav-pdf {
+.public-live-page .public-live-nav-actions {
+  flex-shrink: 0;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.public-live-page .public-live-nav-pdf,
+.public-live-page .public-live-nav-share {
   border-radius: 999px;
   border: 1px solid #e2e8f0;
   background: #fff;
   color: #475569;
 }
 
-.public-live-page .public-live-nav-pdf:hover {
+.public-live-page .public-live-nav-pdf:hover,
+.public-live-page .public-live-nav-share:hover {
   border-color: #e50914;
   color: #e50914;
 }
@@ -3747,8 +4151,15 @@ a.segmented-filter-tab {
 }
 
 .public-live-page .public-live-ball {
+  min-width: 1.8rem;
+  height: 1.8rem;
   border-radius: 0.5rem;
   border-color: #e8ecf1;
+}
+
+.public-live-page .public-live-ball--noball,
+.public-live-page .public-live-ball--extra {
+  min-width: 2rem;
 }
 
 .public-live-page .public-live-ball--four {
@@ -3776,7 +4187,11 @@ a.segmented-filter-tab {
     gap: 0.28rem;
   }
 
-  .score-live-side-score {
+  .score-live-side-rw {
+    font-size: 1.18rem;
+  }
+
+  .score-live-side-overs {
     font-size: 0.94rem;
   }
 
@@ -3784,6 +4199,10 @@ a.segmented-filter-tab {
     width: 2.05rem;
     height: 2.05rem;
     font-size: 0.72rem;
+  }
+
+  .score-live-side-avatar--compact {
+    font-size: 0.56rem;
   }
 
   .score-live-vs {
@@ -3859,6 +4278,10 @@ a.segmented-filter-tab {
 .public-live-table td.num {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+.public-live-table.public-live-table--career-wide thead th {
+  white-space: nowrap;
 }
 
 .player-role-markers {
@@ -4123,9 +4546,17 @@ a.segmented-filter-tab {
   min-width: min-content;
 }
 
-.public-live-nav-pdf {
+.public-live-nav-actions {
   flex-shrink: 0;
   margin-left: auto;
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 0.35rem;
+}
+
+.public-live-nav-pdf,
+.public-live-nav-share {
+  flex-shrink: 0;
   align-self: flex-end;
   display: inline-flex;
   align-items: center;
@@ -4160,6 +4591,36 @@ a.segmented-filter-tab {
 
 .public-live-mvp {
   margin-top: 1rem;
+}
+
+/* Player column width follows content; numeric columns stay tight. */
+.public-live-mvp .public-live-tablewrap {
+  overflow-x: auto;
+}
+
+.public-live-mvp-table {
+  table-layout: auto;
+  width: max-content;
+  max-width: 100%;
+}
+
+.public-live-mvp-table th:first-child,
+.public-live-mvp-table td:first-child {
+  width: auto;
+  white-space: nowrap;
+  text-align: left;
+}
+
+/* Team + stats: centered (Player column stays left). */
+.public-live-mvp-table th:nth-child(2),
+.public-live-mvp-table td.public-live-mvp-team-cell {
+  text-align: center;
+}
+
+.public-live-mvp-table th.num,
+.public-live-mvp-table td.num {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .public-live-mvp-livehint {
@@ -4207,6 +4668,12 @@ a.segmented-filter-tab {
   .public-live-mvp-side {
     display: inline;
   }
+}
+
+.public-live-mvp-table .public-live-mvp-team-cell {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  vertical-align: middle;
 }
 
 .public-live-mvp-table .public-live-mvp-total {
@@ -4946,7 +5413,7 @@ a.segmented-filter-tab {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.75rem;
 }
 
 /* Matches tab — IPL-style listing cards (shares .match-scorecard--listing) */
@@ -4960,13 +5427,13 @@ a.segmented-filter-tab {
 }
 
 .public-tournament-detail .public-tournament-match-scorecard .match-scorecard-head {
-  margin-bottom: 0.5rem;
-  padding-bottom: 0.5rem;
+  margin-bottom: 0.35rem;
+  padding-bottom: 0.3rem;
   border-bottom: 1px solid #eef2f7;
 }
 
 .public-tournament-detail .public-tournament-match-body {
-  padding: 0.15rem 0 0.2rem;
+  padding: 0.05rem 0 0.1rem;
 }
 
 .public-tournament-detail .public-tournament-match-teams-line {
@@ -4997,16 +5464,55 @@ a.segmented-filter-tab {
   color: #94a3b8;
 }
 
+.public-tournament-detail .public-tournament-match-score-lines {
+  margin-top: 0.3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  min-width: 0;
+}
+
+.public-tournament-detail .public-tournament-match-score-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+  font-size: 0.88rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #0f172a;
+  line-height: 1.3;
+}
+
+.public-tournament-detail .public-tournament-match-score-team {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: #475569;
+}
+
+.public-tournament-detail .public-tournament-match-score-val {
+  flex-shrink: 0;
+  text-align: right;
+  max-width: min(14.5rem, 58%);
+  white-space: normal;
+  line-height: 1.25;
+}
+
 .public-tournament-detail .public-tournament-match-card-footer {
-  margin-top: 0.65rem;
-  padding-top: 0.65rem;
+  margin-top: 0.45rem;
+  padding-top: 0.45rem;
 }
 
 .public-tournament-detail .public-tournament-match-footer-inner {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 0.45rem;
+  gap: 0.35rem;
 }
 
 .public-tournament-detail .public-tournament-match-foot-note {

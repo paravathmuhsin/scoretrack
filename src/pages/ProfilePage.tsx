@@ -2,6 +2,7 @@ import { doc, getDoc } from 'firebase/firestore'
 import { ArrowLeft, Mail, Phone, UserRound } from 'lucide-react'
 import { type FormEvent, useEffect, useState, type Dispatch, type SetStateAction } from 'react'
 import { Link } from 'react-router-dom'
+import { toast } from 'sonner'
 import { useAuth } from '../auth/useAuth'
 import { BtnPendingLabel } from '../components/Spinner'
 import { getDb } from '../firebase/config'
@@ -10,13 +11,13 @@ import {
   normalizePhoneDigits,
   parseToTenDigitMobile,
 } from '../lib/phoneDigits'
-import { MIN_PROFILE_NAME_LEN } from '../lib/profileComplete'
+import { MAX_DISPLAY_NAME_LEN, MIN_PROFILE_NAME_LEN } from '../lib/profileComplete'
 import type { UserProfileDoc } from '../types/models'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
-type ProfileFieldKey = 'displayName' | 'email' | 'mobile'
+type ProfileFieldKey = 'fullName' | 'displayName' | 'email' | 'mobile'
 
 type FieldErrors = Partial<Record<ProfileFieldKey, string>>
 
@@ -30,11 +31,13 @@ function clearFieldError(set: Dispatch<SetStateAction<FieldErrors>>, key: Profil
 }
 
 export function ProfilePage() {
-  const { user, updateProfileContact } = useAuth()
+  const { user, updateProfileContact, syncCareerProfileMirror } = useAuth()
+  const [fullName, setFullName] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [mobile, setMobile] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [mirrorBusy, setMirrorBusy] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -50,6 +53,7 @@ export function ProfilePage() {
         const snap = await getDoc(doc(getDb(), 'users', user.uid))
         if (cancelled) return
         const p = snap.exists() ? (snap.data() as UserProfileDoc) : null
+        setFullName(p?.fullName?.trim() ?? '')
         setDisplayName(p?.displayName ?? user.displayName ?? '')
         const m = p?.mobile?.trim() ?? ''
         setMobile(m ? parseToTenDigitMobile(m) ?? normalizePhoneDigits(m) : '')
@@ -62,6 +66,7 @@ export function ProfilePage() {
               ? e.message
               : 'Could not load profile'
         setLoadError(msg)
+        setFullName('')
         setDisplayName(user.displayName ?? '')
         setMobile('')
       } finally {
@@ -75,11 +80,20 @@ export function ProfilePage() {
 
   function validateFields(): boolean {
     const next: FieldErrors = {}
+    const fn = fullName.trim()
+    if (!fn) {
+      next.fullName = 'Full name is required.'
+    } else if (fn.length < MIN_PROFILE_NAME_LEN) {
+      next.fullName = `Full name must be at least ${MIN_PROFILE_NAME_LEN} characters.`
+    }
+
     const name = displayName.trim()
     if (!name) {
       next.displayName = 'Display name is required.'
     } else if (name.length < MIN_PROFILE_NAME_LEN) {
       next.displayName = `Display name must be at least ${MIN_PROFILE_NAME_LEN} characters.`
+    } else if (name.length > MAX_DISPLAY_NAME_LEN) {
+      next.displayName = `Display name must be at most ${MAX_DISPLAY_NAME_LEN} characters.`
     }
 
     const email = user?.email?.trim()
@@ -110,6 +124,7 @@ export function ProfilePage() {
     setSaving(true)
     try {
       await updateProfileContact({
+        fullName: fullName.trim(),
         displayName: displayName.trim(),
         mobile: normMobile,
       })
@@ -163,7 +178,8 @@ export function ProfilePage() {
         <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Your profile</h1>
           <p className="mt-1 text-sm leading-relaxed text-slate-600">
-            Name and mobile are used for invitations and directory search. Email comes from your sign-in account.
+            Full name is required on file; display name (short) and mobile are used in squads and directory. Email comes
+            from your sign-in account.
           </p>
         </div>
       </header>
@@ -183,8 +199,35 @@ export function ProfilePage() {
         className="space-y-5 rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_2px_16px_rgba(15,23,42,0.06)] sm:p-6"
       >
         <div className="space-y-2">
+          <label htmlFor="profile-full-name" className="block text-sm font-semibold text-slate-900">
+            Full name <span className="font-normal text-slate-500">required</span>
+          </label>
+          <div className={cn(fieldShell, fieldErrors.fullName && fieldShellError)}>
+            <UserRound className="size-4 shrink-0 text-primary" strokeWidth={2} aria-hidden />
+            <Input
+              id="profile-full-name"
+              value={fullName}
+              onChange={(e) => {
+                setFullName(e.target.value)
+                clearFieldError(setFieldErrors, 'fullName')
+              }}
+              autoComplete="name"
+              placeholder="Enter your full name"
+              aria-invalid={Boolean(fieldErrors.fullName)}
+              aria-describedby={fieldErrors.fullName ? 'profile-full-name-error' : undefined}
+              className={innerInput}
+            />
+          </div>
+          {fieldErrors.fullName ? (
+            <p id="profile-full-name-error" className="text-sm text-red-600" role="alert">
+              {fieldErrors.fullName}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="space-y-2">
           <label htmlFor="profile-display-name" className="block text-sm font-semibold text-slate-900">
-            Display name
+            Display name <span className="font-normal text-slate-500">(max {MAX_DISPLAY_NAME_LEN} characters)</span>
           </label>
           <div className={cn(fieldShell, fieldErrors.displayName && fieldShellError)}>
             <UserRound className="size-4 shrink-0 text-primary" strokeWidth={2} aria-hidden />
@@ -192,13 +235,16 @@ export function ProfilePage() {
               id="profile-display-name"
               value={displayName}
               onChange={(e) => {
-                setDisplayName(e.target.value)
+                setDisplayName(e.target.value.slice(0, MAX_DISPLAY_NAME_LEN))
                 clearFieldError(setFieldErrors, 'displayName')
               }}
-              autoComplete="name"
-              placeholder="Enter display name"
+              autoComplete="nickname"
+              maxLength={MAX_DISPLAY_NAME_LEN}
+              placeholder="Short name shown in the app"
               aria-invalid={Boolean(fieldErrors.displayName)}
-              aria-describedby={fieldErrors.displayName ? 'profile-display-name-error' : undefined}
+              aria-describedby={
+                fieldErrors.displayName ? 'profile-display-name-error' : 'profile-display-name-hint'
+              }
               className={innerInput}
             />
           </div>
@@ -206,7 +252,11 @@ export function ProfilePage() {
             <p id="profile-display-name-error" className="text-sm text-red-600" role="alert">
               {fieldErrors.displayName}
             </p>
-          ) : null}
+          ) : (
+            <p id="profile-display-name-hint" className="text-xs leading-snug text-slate-500">
+              Used in squads and directory search.
+            </p>
+          )}
         </div>
 
         <div className="space-y-2">
@@ -292,6 +342,34 @@ export function ProfilePage() {
         >
           <BtnPendingLabel pending={saving} idle="Save profile" />
         </Button>
+
+        <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+          <p className="mb-2 text-xs leading-snug text-slate-600">
+            Your public career URL reads names from a copy stored with your stats. Tap below if your name on{' '}
+            <span className="whitespace-nowrap">/player/…</span> looks wrong after saving or signing in.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={mirrorBusy || loading}
+            className="h-10 w-full rounded-xl text-sm font-semibold"
+            onClick={() => {
+              setMirrorBusy(true)
+              void (async () => {
+                try {
+                  await syncCareerProfileMirror()
+                  toast.success('Public player page updated.')
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : 'Could not sync.')
+                } finally {
+                  setMirrorBusy(false)
+                }
+              })()
+            }}
+          >
+            <BtnPendingLabel pending={mirrorBusy} idle="Sync names to public player page" />
+          </Button>
+        </div>
       </form>
     </div>
   )

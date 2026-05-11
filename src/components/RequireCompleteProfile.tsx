@@ -1,6 +1,6 @@
 import { doc, getDoc } from 'firebase/firestore'
 import { useEffect, useState } from 'react'
-import { Navigate, Outlet } from 'react-router-dom'
+import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
 import { getDb } from '../firebase/config'
 import { isProfileComplete } from '../lib/profileComplete'
@@ -11,6 +11,7 @@ import type { UserProfileDoc } from '../types/models'
  */
 export function RequireCompleteProfile() {
   const { user } = useAuth()
+  const location = useLocation()
   const [loading, setLoading] = useState(true)
   const [complete, setComplete] = useState(false)
 
@@ -34,7 +35,10 @@ export function RequireCompleteProfile() {
     }
   }, [user])
 
-  if (!user) return null
+  if (!user) {
+    if (location.pathname === '/app/my-stats') return <Outlet />
+    return null
+  }
   if (loading) {
     return (
       <div className="main">

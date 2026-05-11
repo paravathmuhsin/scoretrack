@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
 import { Spinner } from '../components/Spinner'
+import { useMatchDetailsDocumentTitle } from '../hooks/useMatchDetailsDocumentTitle'
 import { getDb } from '../firebase/config'
 import { subscribeMatchByPublicId } from '../lib/publicMatchQuery'
 import { scoreEventFromFirestore } from '../lib/matchEvents'
@@ -38,6 +39,8 @@ export function PublicLivePage() {
       },
     )
   }, [publicId, authLoading, user?.uid])
+
+  useMatchDetailsDocumentTitle(match)
 
   useEffect(() => {
     if (!match?.id) return

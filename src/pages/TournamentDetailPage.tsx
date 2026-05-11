@@ -4,9 +4,11 @@ import {
   deleteDoc,
   doc,
   getCountFromServer,
+  getDoc,
   onSnapshot,
   orderBy,
   query,
+  serverTimestamp,
   updateDoc,
   where,
 } from 'firebase/firestore'
@@ -14,6 +16,7 @@ import {
   ArrowLeft,
   CalendarDays,
   FileText,
+  Flag,
   MapPin,
   Pencil,
   Settings2,
@@ -24,6 +27,7 @@ import {
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
+import { PublicTournamentMatchScoreLines } from '../components/PublicTournamentMatchScoreLines'
 import { ScheduleTournamentMatchDialog } from '../components/tournament/ScheduleTournamentMatchDialog'
 import {
   OverviewDetailRow,
@@ -37,6 +41,7 @@ import { TournamentPointsPanel } from '../components/TournamentPointsPanel'
 import { matchFormInputFieldShell } from '../components/MatchFormCreateFields'
 import { BtnPendingLabel } from '../components/Spinner'
 import { usePendingWrites } from '../hooks/usePendingWrites'
+import { useTournamentDetailsDocumentTitle } from '../hooks/useTournamentDetailsDocumentTitle'
 import {
   dateInputToTimestamp,
   formatMatchDateTime,
@@ -45,10 +50,19 @@ import {
 } from '../lib/tournamentFormUtils'
 import { getDb } from '../firebase/config'
 import { deleteTournamentCascade } from '../lib/deleteTournamentCascade'
+import { incrementPottForPlayer } from '../lib/matchPlayerStatsPersistence'
 import { compareMatchesOperationalOrder } from '../lib/matchListSort'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import type { MatchDoc, TeamDoc, TournamentDoc, TournamentGroupDoc, TournamentLinkedTeamDoc } from '../types/models'
+import type {
+  MatchDoc,
+  PlayerAggRow,
+  StatsDoc,
+  TeamDoc,
+  TournamentDoc,
+  TournamentGroupDoc,
+  TournamentLinkedTeamDoc,
+} from '../types/models'
 
 const TAB_IDS = ['overview', 'matches', 'teams', 'groups', 'points', 'leaderboard', 'mvp'] as const
 type TabId = (typeof TAB_IDS)[number]
@@ -122,6 +136,12 @@ export function TournamentDetailPage() {
   const [addTeamSearch, setAddTeamSearch] = useState('')
   const addTeamDialogRef = useRef<HTMLDialogElement>(null)
   const deleteTournamentDialogRef = useRef<HTMLDialogElement>(null)
+  const endTournamentDialogRef = useRef<HTMLDialogElement>(null)
+  const [endTournamentWinnerId, setEndTournamentWinnerId] = useState('')
+  const [endTournamentRunnerId, setEndTournamentRunnerId] = useState('')
+  const [endTournamentPotKey, setEndTournamentPotKey] = useState('')
+  const [statsPlayersForPot, setStatsPlayersForPot] = useState<PlayerAggRow[]>([])
+  const [endTournamentError, setEndTournamentError] = useState<string | null>(null)
   const [scheduleMatchOpen, setScheduleMatchOpen] = useState(false)
   const [scheduleDialogNonce, setScheduleDialogNonce] = useState(0)
   const [tournamentMatches, setTournamentMatches] = useState<(MatchDoc & { id: string })[]>([])
@@ -147,6 +167,8 @@ export function TournamentDetailPage() {
       setT({ id: snap.id, ...(snap.data() as TournamentDoc) })
     })
   }, [id, user])
+
+  useTournamentDetailsDocumentTitle(t)
 
   useEffect(() => {
     if (!t) return
@@ -423,6 +445,94 @@ export function TournamentDetailPage() {
     }
   }
 
+  const POT_KEY_SEP = '\x1f'
+
+  async function openEndTournamentDialog() {
+    if (!id || !t || t.createdBy !== user?.uid) return
+    setEndTournamentError(null)
+    setEndTournamentWinnerId('')
+    setEndTournamentRunnerId('')
+    setEndTournamentPotKey('')
+    setStatsPlayersForPot([])
+    try {
+      const snap = await getDoc(doc(getDb(), 'tournaments', id, 'stats', 'summary'))
+      const rows = snap.exists() ? ((snap.data() as StatsDoc).players ?? []) : []
+      setStatsPlayersForPot(rows)
+      const sorted = [...rows].sort(
+        (a, b) =>
+          b.mvpScore - a.mvpScore ||
+          b.runs - a.runs ||
+          b.wickets - a.wickets ||
+          a.playerId.localeCompare(b.playerId),
+      )
+      const best = sorted[0]
+      if (best) setEndTournamentPotKey(`${best.teamId}${POT_KEY_SEP}${best.playerId}`)
+    } catch {
+      setStatsPlayersForPot([])
+    }
+    queueMicrotask(() => endTournamentDialogRef.current?.showModal())
+  }
+
+  function closeEndTournamentDialog() {
+    endTournamentDialogRef.current?.close()
+    setEndTournamentError(null)
+  }
+
+  async function confirmEndTournament() {
+    if (!id || !t || t.createdBy !== user?.uid) return
+    if (!endTournamentWinnerId || !endTournamentRunnerId) {
+      setEndTournamentError('Choose winner and runner-up.')
+      return
+    }
+    if (endTournamentWinnerId === endTournamentRunnerId) {
+      setEndTournamentError('Runner-up must be a different team than the winner.')
+      return
+    }
+    if (!endTournamentPotKey.includes(POT_KEY_SEP)) {
+      setEndTournamentError('Choose Player of the tournament.')
+      return
+    }
+    const [potTeamId, potPlayerId] = endTournamentPotKey.split(POT_KEY_SEP)
+    const potRow = statsPlayersForPot.find((p) => p.teamId === potTeamId && p.playerId === potPlayerId)
+    if (!potRow) {
+      setEndTournamentError('Could not resolve Player of the tournament.')
+      return
+    }
+    const sortedDefault = [...statsPlayersForPot].sort(
+      (a, b) =>
+        b.mvpScore - a.mvpScore ||
+        b.runs - a.runs ||
+        b.wickets - a.wickets ||
+        a.playerId.localeCompare(b.playerId),
+    )
+    const defaultKey = sortedDefault[0]
+      ? `${sortedDefault[0]!.teamId}${POT_KEY_SEP}${sortedDefault[0]!.playerId}`
+      : ''
+    const potManual = Boolean(statsPlayersForPot.length && endTournamentPotKey !== defaultKey)
+    setEndTournamentError(null)
+    try {
+      await run(async () => {
+        await updateDoc(doc(getDb(), 'tournaments', id), {
+          tournamentOutcome: {
+            endedAt: serverTimestamp(),
+            winnerLinkedTeamId: endTournamentWinnerId,
+            runnerUpLinkedTeamId: endTournamentRunnerId,
+            playerOfTheTournament: {
+              playerId: potRow.playerId,
+              name: potRow.name,
+              teamId: potRow.teamId,
+              source: potManual ? 'manual' : 'default',
+            },
+          },
+        })
+        await incrementPottForPlayer(getDb(), potRow.playerId, id, t.isPublic === true, potRow.name)
+      })
+      closeEndTournamentDialog()
+    } catch (err) {
+      setEndTournamentError(err instanceof Error ? err.message : 'Could not end tournament')
+    }
+  }
+
   function openAddTeamModal() {
     setAddTeamSearch('')
     setError(null)
@@ -687,6 +797,32 @@ export function TournamentDetailPage() {
                     </OverviewDetailRow>
                   </div>
                 </section>
+                {t.tournamentOutcome && (
+                  <section
+                    className="public-tournament-surface public-tournament-overview-card"
+                    aria-labelledby="app-tournament-outcome-heading"
+                  >
+                    <h3 id="app-tournament-outcome-heading" className="public-tournament-overview-section-title">
+                      <Flag className="inline-block size-4 align-[-2px] text-primary" strokeWidth={2} aria-hidden />
+                      <span className="ml-1.5">Tournament result</span>
+                    </h3>
+                    <p className="text-sm text-muted-foreground" style={{ marginTop: 0 }}>
+                      <strong className="text-slate-800">Winner:</strong>{' '}
+                      {linkedTeamDisplayName(t.tournamentOutcome.winnerLinkedTeamId)}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      <strong className="text-slate-800">Runner-up:</strong>{' '}
+                      {linkedTeamDisplayName(t.tournamentOutcome.runnerUpLinkedTeamId)}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      <strong className="text-slate-800">Player of the tournament:</strong>{' '}
+                      {t.tournamentOutcome.playerOfTheTournament.name}
+                      {t.tournamentOutcome.playerOfTheTournament.source === 'manual' ? (
+                        <span className="muted small"> (selected manually)</span>
+                      ) : null}
+                    </p>
+                  </section>
+                )}
               </>
             )}
 
@@ -918,6 +1054,28 @@ export function TournamentDetailPage() {
 
           <section
             className="public-tournament-surface public-tournament-overview-card"
+            aria-labelledby="app-end-tournament-heading"
+          >
+            <h2 id="app-end-tournament-heading" className="public-tournament-overview-section-title">
+              End tournament
+            </h2>
+            <p className="text-sm text-muted-foreground" style={{ marginTop: 0 }}>
+              Record winner, runner-up, and Player of the tournament. You can still schedule matches and manage groups
+              afterwards.
+            </p>
+            <button
+              type="button"
+              className="btn"
+              style={{ marginTop: '0.65rem' }}
+              disabled={writePending || Boolean(t.tournamentOutcome)}
+              onClick={() => void openEndTournamentDialog()}
+            >
+              {t.tournamentOutcome ? 'Tournament ended' : 'End tournament…'}
+            </button>
+          </section>
+
+          <section
+            className="public-tournament-surface public-tournament-overview-card"
             style={{ borderColor: 'var(--destructive, #c0392b)' }}
             aria-labelledby="app-delete-tournament-heading"
           >
@@ -1132,6 +1290,7 @@ export function TournamentDetailPage() {
                           </span>
                           <span className="match-scorecard-teamname">{m.away.name}</span>
                         </p>
+                        <PublicTournamentMatchScoreLines match={m} />
                       </div>
 
                       <div className="match-scorecard-upcoming-footer public-tournament-match-card-footer">
@@ -1208,6 +1367,106 @@ export function TournamentDetailPage() {
         </div>
       )}
       </div>
+
+      <dialog
+        ref={endTournamentDialogRef}
+        className="team-picker-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="end-tournament-dialog-title"
+        onClose={() => setEndTournamentError(null)}
+      >
+        <div className="team-picker-dialog-inner">
+          <h2 id="end-tournament-dialog-title" className="team-picker-dialog-title">
+            End tournament
+          </h2>
+          <p className="muted small" style={{ marginTop: 0 }}>
+            Confirm final standings for <strong>{t.name}</strong>. Player of the tournament defaults to the MVP leader
+            from the stats summary (you can change it).
+          </p>
+          <div className="space-y-3" style={{ marginTop: '1rem' }}>
+            <div>
+              <label htmlFor="end-tourn-winner" className="block text-sm font-semibold text-slate-900">
+                Winner
+              </label>
+              <select
+                id="end-tourn-winner"
+                className={matchFormInputFieldShell}
+                value={endTournamentWinnerId}
+                onChange={(e) => setEndTournamentWinnerId(e.target.value)}
+              >
+                <option value="">Select team</option>
+                {linkedTeams.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {linkedTeamDisplayName(l.id)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="end-tourn-runner" className="block text-sm font-semibold text-slate-900">
+                Runner-up
+              </label>
+              <select
+                id="end-tourn-runner"
+                className={matchFormInputFieldShell}
+                value={endTournamentRunnerId}
+                onChange={(e) => setEndTournamentRunnerId(e.target.value)}
+              >
+                <option value="">Select team</option>
+                {linkedTeams.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {linkedTeamDisplayName(l.id)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="end-tourn-pot" className="block text-sm font-semibold text-slate-900">
+                Player of the tournament
+              </label>
+              <select
+                id="end-tourn-pot"
+                className={matchFormInputFieldShell}
+                value={endTournamentPotKey}
+                onChange={(e) => setEndTournamentPotKey(e.target.value)}
+                disabled={statsPlayersForPot.length === 0}
+              >
+                {statsPlayersForPot.length === 0 ? (
+                  <option value="">No stats summary yet — play completed matches first</option>
+                ) : (
+                  statsPlayersForPot.map((p) => {
+                    const key = `${p.teamId}${POT_KEY_SEP}${p.playerId}`
+                    return (
+                      <option key={key} value={key}>
+                        {p.name} · {p.teamId} · MVP {p.mvpScore.toFixed(0)}
+                      </option>
+                    )
+                  })
+                )}
+              </select>
+            </div>
+          </div>
+          {endTournamentError ? (
+            <p className="error" style={{ marginTop: '0.75rem' }}>
+              {endTournamentError}
+            </p>
+          ) : null}
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '1rem' }}>
+            <button type="button" className="btn" disabled={writePending} onClick={() => closeEndTournamentDialog()}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn primary"
+              disabled={writePending || statsPlayersForPot.length === 0}
+              onClick={() => void confirmEndTournament()}
+            >
+              <BtnPendingLabel pending={writePending} idle="Save & end" />
+            </button>
+          </div>
+        </div>
+      </dialog>
 
       <dialog
         ref={deleteTournamentDialogRef}

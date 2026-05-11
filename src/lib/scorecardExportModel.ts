@@ -1,13 +1,16 @@
 import { formatBattingScorecardStatus } from './battingScorecardFormat'
+import { matchTeamShortLabel } from './teamAvatarLabel'
 import { playerRoleMarkersPlain } from './matchPlayerRoles'
 import { humanizeResultForMatch } from './humanizeResultText'
-import { computeMatchMvp, type MatchMvpResult } from './mvpMatch'
+import { type MatchMvpResult } from './mvpMatch'
+import { effectiveMatchMvp } from './effectiveMatchPotm'
 import { buildPlayerNameLookup } from './playerDisplayName'
 import { wicketsTimeline, type FallOfWicketInfo } from './publicLiveAnalytics'
 import type { MatchDoc, RosterPlayer, Side } from '../types/models'
 import {
   bowlingStatsPerInnings,
   opp,
+  oversProgressString,
   oversString,
   type InningsSnapshot,
   type PerInningsBowler,
@@ -56,6 +59,9 @@ export type InningsPdfSection = {
 export type ScorecardPdfModel = {
   homeName: string
   awayName: string
+  /** `shortName` on snapshot when set, else full name — MVP table etc. */
+  homeTeamShort: string
+  awayTeamShort: string
   eyebrow: string
   resultLine: string | null
   /** When the organiser ended the match early with a note. */
@@ -64,6 +70,8 @@ export type ScorecardPdfModel = {
   heroRows: { team: string; score: string; sub: string }[]
   innings: InningsPdfSection[]
   mvp: MatchMvpResult
+  /** False for abandoned matches — PDF omits the MVP section. */
+  includeMvpSection: boolean
 }
 
 function xiPlayers(match: MatchDoc, side: Side): RosterPlayer[] {
@@ -214,8 +222,8 @@ function buildInningsSection(
     }
   })
 
-  const bowlingPdf: BowlingPdfRow[] = bowlRows.map(({ id, name, stats }) => ({
-    name: name + playerRoleMarkersPlain(match, bowlingSide, id),
+  const bowlingPdf: BowlingPdfRow[] = bowlRows.map(({ name, stats }) => ({
+    name,
     overs: bowlerOversDisplay(stats.legalBalls, cfg.ballsPerOver),
     maidens: 0,
     runs: stats.runs,
@@ -269,14 +277,14 @@ export function buildScorecardPdfModel(
     {
       team: teamFirstName,
       score: `${state.innings1.runs}/${state.innings1.wickets}`,
-      sub: `(${oversString(state.innings1.legalBalls, cfg.ballsPerOver)}/${cfg.oversLimit} ov)`,
+      sub: `(${oversProgressString(state.innings1.legalBalls, cfg.ballsPerOver, cfg.oversLimit)} ov)`,
     },
   ]
   if (state.innings2) {
     heroRows.push({
       team: teamSecondName,
       score: `${state.innings2.runs}/${state.innings2.wickets}`,
-      sub: `(${oversString(state.innings2.legalBalls, cfg.ballsPerOver)}/${cfg.oversLimit} ov, T:${state.innings1.runs + 1})`,
+      sub: `(${oversProgressString(state.innings2.legalBalls, cfg.ballsPerOver, cfg.oversLimit)} ov)`,
     })
   } else {
     heroRows.push({
@@ -300,19 +308,25 @@ export function buildScorecardPdfModel(
   const s2 = buildInningsSection(resolve, 2, match, cfg, state, events, splitBowling)
   if (s2) innings.push(s2)
 
-  const mvpRaw = computeMatchMvp(match, cfg, events, state)
+  const emptyMvp: MatchMvpResult = {
+    rows: [],
+    potm: null,
+    potmNote: null,
+    potmSource: null,
+    fieldingByPlayerId: {},
+  }
+  const mvpRaw =
+    match.status === 'abandoned' ? emptyMvp : effectiveMatchMvp(match, cfg, events, state)
   const mvp: MatchMvpResult = {
     ...mvpRaw,
     rows: mvpRaw.rows.map((r) => ({
       ...r,
-      name: resolve(r.playerId) + playerRoleMarkersPlain(match, r.side, r.playerId),
+      name: resolve(r.playerId),
     })),
     potm: mvpRaw.potm
       ? {
           ...mvpRaw.potm,
-          name:
-            resolve(mvpRaw.potm.playerId) +
-            playerRoleMarkersPlain(match, mvpRaw.potm.side, mvpRaw.potm.playerId),
+          name: resolve(mvpRaw.potm.playerId),
         }
       : null,
   }
@@ -320,6 +334,8 @@ export function buildScorecardPdfModel(
   return {
     homeName: match.home.name,
     awayName: match.away.name,
+    homeTeamShort: matchTeamShortLabel(match.home),
+    awayTeamShort: matchTeamShortLabel(match.away),
     eyebrow: eyebrowParts.join(' · '),
     resultLine,
     resultEndReasonLine,
@@ -327,5 +343,6 @@ export function buildScorecardPdfModel(
     heroRows,
     innings,
     mvp,
+    includeMvpSection: match.status !== 'abandoned',
   }
 }

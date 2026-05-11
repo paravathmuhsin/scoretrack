@@ -1,6 +1,8 @@
-import { deleteDoc, deleteField, doc, getDoc, updateDoc } from 'firebase/firestore'
-import { ArrowLeft, Trash2, Users } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { deleteDoc, deleteField, doc, getDoc, setDoc, Timestamp, updateDoc } from 'firebase/firestore'
+import { ArrowLeft, Copy, ExternalLink, Share2, Trash2, Users, X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { toast } from 'sonner'
+import { v4 as uuidv4 } from 'uuid'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
 import { UserTeamForm } from '../components/UserTeamForm'
@@ -19,6 +21,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { TeamDoc } from '../types/models'
+import type { UserTeamFormPayload } from '../components/UserTeamForm'
 
 export function UserTeamEditPage() {
   const { teamId } = useParams()
@@ -28,6 +31,38 @@ export function UserTeamEditPage() {
   const [team, setTeam] = useState<(TeamDoc & { id: string }) | null>(null)
   const [loadFailed, setLoadFailed] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [shareModalOpen, setShareModalOpen] = useState(false)
+  const [inviteBusy, setInviteBusy] = useState(false)
+
+  const invitationUrl = useMemo(() => {
+    if (!team?.joinInviteToken || typeof window === 'undefined') return ''
+    return `${window.location.origin}/app/join/team/${team.joinInviteToken}`
+  }, [team?.joinInviteToken])
+
+  async function ensureInviteLink() {
+    if (!user || !teamId || !team) return
+    if (team.joinInviteToken) return
+    setInviteBusy(true)
+    try {
+      const token = uuidv4()
+      await setDoc(doc(getDb(), 'userTeamJoinInvites', token), {
+        ownerUid: user.uid,
+        teamId,
+        teamName: team.name,
+        memberIds: team.players.map((p) => p.playerId),
+        createdAt: Timestamp.now(),
+      })
+      await updateDoc(doc(getDb(), 'users', user.uid, 'teams', teamId), {
+        joinInviteToken: token,
+      })
+      setTeam({ ...team, joinInviteToken: token })
+      toast.success('Invitation link created')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not create invitation')
+    } finally {
+      setInviteBusy(false)
+    }
+  }
 
   useEffect(() => {
     if (!user || !teamId) return
@@ -110,7 +145,12 @@ export function UserTeamEditPage() {
               onClick={() => {
                 void (async () => {
                   if (!user || !teamId) return
-                  await run(() => deleteDoc(doc(getDb(), 'users', user.uid, 'teams', teamId)))
+                  await run(async () => {
+                    if (team.joinInviteToken) {
+                      await deleteDoc(doc(getDb(), 'userTeamJoinInvites', team.joinInviteToken))
+                    }
+                    await deleteDoc(doc(getDb(), 'users', user.uid, 'teams', teamId))
+                  })
                   setDeleteDialogOpen(false)
                   nav('/app/teams')
                 })()
@@ -131,16 +171,132 @@ export function UserTeamEditPage() {
         </div>
       )}
 
-      <Link
-        to="/app/teams"
-        className={cn(
-          'inline-flex items-center gap-1.5 text-sm font-medium no-underline hover:underline',
-          '!text-primary hover:!text-primary visited:!text-primary',
-        )}
-      >
-        <ArrowLeft className="size-4 shrink-0" strokeWidth={2.5} aria-hidden />
-        My Teams
-      </Link>
+      <div className="flex items-center justify-between gap-3">
+        <Link
+          to="/app/teams"
+          className={cn(
+            'inline-flex min-w-0 items-center gap-1.5 text-sm font-medium no-underline hover:underline',
+            '!text-primary hover:!text-primary visited:!text-primary',
+          )}
+        >
+          <ArrowLeft className="size-4 shrink-0" strokeWidth={2.5} aria-hidden />
+          My Teams
+        </Link>
+        <button
+          type="button"
+          className="inline-flex size-9 shrink-0 items-center justify-center rounded-full text-primary transition-colors hover:bg-primary/10"
+          aria-label="Share team invitation link"
+          onClick={() => setShareModalOpen(true)}
+        >
+          <Share2 className="size-[18px]" strokeWidth={2.2} aria-hidden />
+        </button>
+      </div>
+
+      {shareModalOpen && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4"
+          role="presentation"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setShareModalOpen(false)
+          }}
+        >
+          <div
+            className="flex max-h-[min(90dvh,560px)] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="team-invite-share-title"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="relative shrink-0 border-b border-slate-100 px-5 pb-4 pt-5">
+              <button
+                type="button"
+                className="absolute top-4 right-4 inline-flex size-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+                aria-label="Close"
+                onClick={() => setShareModalOpen(false)}
+              >
+                <X className="size-4" strokeWidth={2.2} />
+              </button>
+              <div className="flex items-start gap-3 pr-10">
+                <div
+                  className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"
+                  aria-hidden
+                >
+                  <Share2 className="size-5" strokeWidth={2} />
+                </div>
+                <div className="min-w-0 leading-tight">
+                  <h2 id="team-invite-share-title" className="text-lg font-bold text-slate-900">
+                    Invite players
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Anyone with this link can sign in and join your squad. Only the roster can change — not the team
+                    name or other details.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              {!team.joinInviteToken ? (
+                <div className="space-y-3">
+                  <p className="text-sm text-slate-600">Create a link to share with your players.</p>
+                  <Button
+                    type="button"
+                    className="h-11 w-full rounded-xl font-semibold"
+                    disabled={inviteBusy || writePending}
+                    onClick={() => void ensureInviteLink()}
+                  >
+                    {inviteBusy ? 'Creating…' : 'Generate invitation link'}
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <label htmlFor="team-invite-url" className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Invitation URL
+                  </label>
+                  <input
+                    id="team-invite-url"
+                    readOnly
+                    value={invitationUrl}
+                    onFocus={(e) => e.target.select()}
+                    className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 font-mono text-xs text-slate-900 outline-none ring-primary focus:ring-2 sm:text-sm"
+                  />
+                </>
+              )}
+            </div>
+
+            {team.joinInviteToken ? (
+              <div className="flex shrink-0 flex-wrap gap-3 border-t border-slate-100 px-5 py-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 min-w-0 flex-1 rounded-xl font-semibold sm:flex-initial"
+                  disabled={!invitationUrl}
+                  onClick={() => {
+                    void navigator.clipboard
+                      .writeText(invitationUrl)
+                      .then(() => toast.success('Link copied'))
+                      .catch(() => toast.error('Could not copy link'))
+                  }}
+                >
+                  <Copy className="mr-2 size-4 shrink-0" strokeWidth={2.2} aria-hidden />
+                  Copy link
+                </Button>
+                <Button
+                  type="button"
+                  className="h-11 min-w-0 flex-1 rounded-xl font-semibold sm:flex-initial"
+                  disabled={!invitationUrl}
+                  onClick={() => {
+                    window.open(invitationUrl, '_blank', 'noopener,noreferrer')
+                  }}
+                >
+                  <ExternalLink className="mr-2 size-4 shrink-0" strokeWidth={2.2} aria-hidden />
+                  Open link
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1 leading-tight">
@@ -159,7 +315,7 @@ export function UserTeamEditPage() {
         key={team.id}
         initial={team}
         submitLabel="Save changes"
-        onSubmit={async (p) => {
+        onSubmit={async (p: UserTeamFormPayload) => {
           if (!user) return
           await updateDoc(doc(getDb(), 'users', user.uid, 'teams', teamId), {
             name: p.name,
@@ -168,6 +324,13 @@ export function UserTeamEditPage() {
             location: p.location,
             logoUrl: deleteField(),
           })
+          const tok = team.joinInviteToken
+          if (tok) {
+            await updateDoc(doc(getDb(), 'userTeamJoinInvites', tok), {
+              teamName: p.name,
+              memberIds: p.players.map((x) => x.playerId),
+            })
+          }
         }}
       />
 

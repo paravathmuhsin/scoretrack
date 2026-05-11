@@ -1,11 +1,13 @@
-import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
+import { Document, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
 import { buildScorecardPdfModel } from '../lib/scorecardExportModel'
+import { scorecardPdfDisplayTitle } from '../lib/scorecardPdfNaming'
 import type { InningsPdfSection, ScorecardPdfModel } from '../lib/scorecardExportModel'
 import type { MatchDoc } from '../types/models'
 import type { ReplayConfig, ReplayState, ScoreEvent } from '../scoring/engine'
+import { PdfScoretrackHeader } from './PdfScoretrackHeader'
 
 /** Bumped when PDF layout changes so you can confirm the app is not serving a cached export. */
-export const SCORECARD_PDF_LAYOUT_VERSION = 8
+export const SCORECARD_PDF_LAYOUT_VERSION = 23
 
 const styles = StyleSheet.create({
   page: {
@@ -15,18 +17,6 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontFamily: 'Helvetica',
     color: '#0f172a',
-  },
-  pdfBrandWrap: {
-    marginBottom: 8,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-  },
-  pdfBrandLogo: {
-    width: 168,
-    height: 48,
-    objectFit: 'contain',
-    objectPosition: 'left',
   },
   eyebrow: {
     fontSize: 8,
@@ -48,9 +38,27 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e2e8f0',
   },
+  /** Both innings scores on one row (two columns). */
+  heroCombined: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+  },
+  heroCol: { flex: 1, minWidth: 0 },
+  heroColLeft: { alignItems: 'flex-start', paddingRight: 6 },
+  heroColRight: { alignItems: 'flex-end', paddingLeft: 6 },
+  heroColDivider: { width: 1, backgroundColor: '#e2e8f0', marginHorizontal: 2 },
+  heroTeamCol: { fontSize: 11, fontWeight: 'bold' },
+  heroSubCol: { fontSize: 8, color: '#64748b' },
+  heroScoreCol: { fontSize: 14, fontWeight: 'bold' },
+  /** Wrapper for score+overs as one unbreakable inline Text block. */
+  heroScoreMeta: { marginTop: 4 },
+  heroScoreMetaRight: { marginTop: 4, width: '100%', textAlign: 'right' },
   heroTeam: { fontSize: 11, fontWeight: 'bold', flex: 1, paddingRight: 8 },
-  heroRight: { alignItems: 'flex-end', maxWidth: '55%' },
-  heroSub: { fontSize: 8, color: '#64748b', marginBottom: 2 },
+  heroRight: { maxWidth: '55%', alignItems: 'flex-end' },
+  heroSub: { fontSize: 8, color: '#64748b' },
   heroScore: { fontSize: 14, fontWeight: 'bold' },
   meta: { fontSize: 8, color: '#64748b', marginTop: 8, marginBottom: 4, lineHeight: 1.4 },
   sectionTitle: {
@@ -126,6 +134,18 @@ const styles = StyleSheet.create({
   mvpHint: { fontSize: 8, color: '#64748b', fontStyle: 'italic', marginBottom: 8 },
   muted: { fontSize: 8, color: '#64748b' },
   potmRow: { backgroundColor: '#eff6ff' },
+  /** MVP table: player column grows; others fixed. */
+  mvpColPlayer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    paddingRight: 4,
+    minWidth: 0,
+    textAlign: 'left',
+  },
+  mvpColTeam: { width: '16%', paddingRight: 2, textAlign: 'center' },
+  mvpColNum: { width: '9%', textAlign: 'center', fontSize: 8 },
+  mvpColNumTotal: { width: '10%', textAlign: 'center', fontSize: 8, fontWeight: 'bold' },
   pdfFooter: {
     fontSize: 7,
     color: '#94a3b8',
@@ -134,36 +154,59 @@ const styles = StyleSheet.create({
   },
 })
 
-function pdfLogoAbsoluteUrl(): string {
-  if (typeof window !== 'undefined' && window.location?.origin) {
-    return new URL('/brand/scoretrack-logo.png', window.location.origin).href
-  }
-  return '/brand/scoretrack-logo.png'
-}
-
-function PdfBrandHeader() {
+/** One typeset line so score and overs are not split across lines (react-pdf nested Text). */
+function HeroScoreOversLine({
+  score,
+  sub,
+  align,
+}: {
+  score: string
+  sub: string
+  align: 'left' | 'right'
+}) {
+  const wrapStyle = align === 'right' ? styles.heroScoreMetaRight : styles.heroScoreMeta
   return (
-    <View style={styles.pdfBrandWrap} wrap={false}>
-      <Image src={pdfLogoAbsoluteUrl()} style={styles.pdfBrandLogo} />
-    </View>
+    <Text style={wrapStyle} wrap={false}>
+      <Text style={styles.heroScoreCol}>{score}</Text>
+      {sub ? <Text style={styles.heroSubCol}> {sub}</Text> : null}
+    </Text>
   )
 }
 
 function PdfHero({ model }: { model: ScorecardPdfModel }) {
+  const rows = model.heroRows
+  const combined = rows.length === 2
+
   return (
     <View>
       <Text style={styles.eyebrow}>{model.eyebrow}</Text>
       {model.resultLine ? <Text style={styles.resultLine}>{model.resultLine}</Text> : null}
       {model.resultEndReasonLine ? <Text style={styles.meta}>{model.resultEndReasonLine}</Text> : null}
-      {model.heroRows.map((row, i) => (
-        <View key={i} style={styles.heroRow} wrap={false}>
-          <Text style={styles.heroTeam}>{row.team}</Text>
-          <View style={styles.heroRight}>
-            {row.sub ? <Text style={styles.heroSub}>{row.sub}</Text> : null}
-            <Text style={styles.heroScore}>{row.score}</Text>
+      {combined ? (
+        <View style={styles.heroCombined} wrap={true}>
+          <View style={[styles.heroCol, styles.heroColLeft]}>
+            <Text style={styles.heroTeamCol}>{rows[0].team}</Text>
+            <HeroScoreOversLine score={rows[0].score} sub={rows[0].sub} align="left" />
+          </View>
+          <View style={styles.heroColDivider} />
+          <View style={[styles.heroCol, styles.heroColRight]}>
+            <Text style={[styles.heroTeamCol, { textAlign: 'right' }]}>{rows[1].team}</Text>
+            <HeroScoreOversLine score={rows[1].score} sub={rows[1].sub} align="right" />
           </View>
         </View>
-      ))}
+      ) : (
+        rows.map((row, i) => (
+          <View key={i} style={styles.heroRow} wrap={true}>
+            <Text style={styles.heroTeam}>{row.team}</Text>
+            <View style={styles.heroRight}>
+              <Text style={{ textAlign: 'right' }} wrap={false}>
+                <Text style={styles.heroScore}>{row.score}</Text>
+                {row.sub ? <Text style={styles.heroSub}> {row.sub}</Text> : null}
+              </Text>
+            </View>
+          </View>
+        ))
+      )}
       {model.tossLine ? <Text style={styles.meta}>{model.tossLine}</Text> : null}
     </View>
   )
@@ -171,7 +214,7 @@ function PdfHero({ model }: { model: ScorecardPdfModel }) {
 
 function PdfBattingTable({ inn }: { inn: InningsPdfSection }) {
   return (
-    <View wrap={false}>
+    <View>
       <View style={styles.tableHead}>
         <Text style={[styles.colBatCell, { fontWeight: 'bold' }]}>Batting</Text>
         <Text style={[styles.colNumSm, { fontWeight: 'bold' }]}>R</Text>
@@ -218,7 +261,7 @@ function PdfBattingTable({ inn }: { inn: InningsPdfSection }) {
 
 function PdfBowlingTable({ inn }: { inn: InningsPdfSection }) {
   return (
-    <View style={{ marginTop: 8 }} wrap={false}>
+    <View style={{ marginTop: 8 }}>
       <Text style={styles.fowTitle}>Bowling ({inn.bowlingTeamName})</Text>
       <View style={styles.tableHead}>
         <Text style={[styles.colBowlingName, { fontWeight: 'bold' }]}>Bowling</Text>
@@ -244,13 +287,11 @@ function PdfBowlingTable({ inn }: { inn: InningsPdfSection }) {
 
 function PdfInningsBlock({ inn }: { inn: InningsPdfSection }) {
   return (
-    <View minPresenceAhead={120}>
+    <View>
       <Text style={styles.innTitle}>
         Innings {inn.innings} — {inn.battingTeamName}
       </Text>
-      <Text style={styles.muted} wrap={false}>
-        Batting ({inn.battingTeamName})
-      </Text>
+      <Text style={styles.muted}>Batting ({inn.battingTeamName})</Text>
       <PdfBattingTable inn={inn} />
       {inn.fallOfWickets ? (
         <View style={styles.fowBlock}>
@@ -270,12 +311,13 @@ function PdfInningsBlock({ inn }: { inn: InningsPdfSection }) {
 }
 
 function PdfMvp({ model }: { model: ScorecardPdfModel }) {
+  if (!model.includeMvpSection) return null
   const { mvp } = model
   return (
-    <View style={{ marginTop: 8 }}>
+    <View style={{ marginTop: 8 }} wrap={true}>
       <Text style={styles.sectionTitle}>Most Valuable Player (MVP)</Text>
       {mvp.potm ? (
-        <View style={styles.mvpPotm}>
+        <View style={styles.mvpPotm} wrap={true}>
           <Text style={styles.mvpPotmLabel}>Player of the Match</Text>
           <Text style={styles.mvpPotmName}>{mvp.potm.name}</Text>
           <Text style={styles.mvpPotmTeam}>
@@ -291,33 +333,32 @@ function PdfMvp({ model }: { model: ScorecardPdfModel }) {
       {mvp.rows.length === 0 ? (
         <Text style={styles.muted}>No squad line-ups on file; MVP cannot be computed.</Text>
       ) : (
-        <View wrap={false}>
-          <View style={styles.tableHead}>
-            <Text style={{ width: '44%', fontWeight: 'bold' }}>Player</Text>
-            <Text style={[styles.colNumSm, { fontWeight: 'bold', width: '14%' }]}>Bat</Text>
-            <Text style={[styles.colNumSm, { fontWeight: 'bold', width: '14%' }]}>Bowl</Text>
-            <Text style={[styles.colNumSm, { fontWeight: 'bold', width: '14%' }]}>Fld</Text>
-            <Text style={[styles.colNumSm, { fontWeight: 'bold', width: '14%' }]}>Total</Text>
+        <View wrap={true}>
+          <View style={styles.tableHead} wrap={true}>
+            <Text style={[styles.mvpColPlayer, { fontWeight: 'bold' }]}>Player</Text>
+            <Text style={[styles.mvpColTeam, { fontWeight: 'bold', fontSize: 8 }]}>Team</Text>
+            <Text style={[styles.mvpColNumTotal, { fontWeight: 'bold' }]}>Total</Text>
+            <Text style={[styles.mvpColNum, { fontWeight: 'bold' }]}>Bat</Text>
+            <Text style={[styles.mvpColNum, { fontWeight: 'bold' }]}>Bowl</Text>
+            <Text style={[styles.mvpColNum, { fontWeight: 'bold' }]}>Fld</Text>
+            <Text style={[styles.mvpColNum, { fontWeight: 'bold' }]}>Imp.</Text>
           </View>
           {mvp.rows.map((r) => {
             const isPotm = mvp.potm?.playerId === r.playerId
+            const teamName = r.side === 'home' ? model.homeTeamShort : model.awayTeamShort
             return (
               <View
                 key={r.playerId}
                 style={[styles.tableRow, isPotm ? styles.potmRow : {}]}
+                wrap={true}
               >
-                <Text style={{ width: '44%' }}>
-                  {r.name}{' '}
-                  <Text style={styles.muted}>
-                    ({r.side === 'home' ? model.homeName : model.awayName})
-                  </Text>
-                </Text>
-                <Text style={[styles.colNumSm, { width: '14%' }]}>{r.batting.toFixed(2)}</Text>
-                <Text style={[styles.colNumSm, { width: '14%' }]}>{r.bowling.toFixed(2)}</Text>
-                <Text style={[styles.colNumSm, { width: '14%' }]}>{r.fielding.toFixed(2)}</Text>
-                <Text style={[styles.colNumSm, { width: '14%', fontWeight: 'bold' }]}>
-                  {r.total.toFixed(2)}
-                </Text>
+                <Text style={styles.mvpColPlayer}>{r.name}</Text>
+                <Text style={[styles.mvpColTeam, { fontSize: 8, color: '#64748b' }]}>{teamName}</Text>
+                <Text style={styles.mvpColNumTotal}>{r.total.toFixed(0)}</Text>
+                <Text style={styles.mvpColNum}>{r.batting.toFixed(0)}</Text>
+                <Text style={styles.mvpColNum}>{r.bowling.toFixed(0)}</Text>
+                <Text style={styles.mvpColNum}>{r.fielding.toFixed(0)}</Text>
+                <Text style={styles.mvpColNum}>{r.impact.toFixed(0)}</Text>
               </View>
             )
           })}
@@ -341,9 +382,9 @@ export function ScorecardPdfDocument({
   const model = buildScorecardPdfModel(match, cfg, state, events)
 
   return (
-    <Document>
-      <Page size="A4" style={styles.page} wrap>
-        <PdfBrandHeader />
+    <Document title={scorecardPdfDisplayTitle(match)}>
+      <Page size="A4" style={styles.page} wrap={true}>
+        <PdfScoretrackHeader />
         <PdfHero model={model} />
         <Text style={styles.sectionTitle}>Scorecard</Text>
         {model.innings.map((inn) => (

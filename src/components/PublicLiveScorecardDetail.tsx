@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   bowlingStatsPerInnings,
   currentInnings,
@@ -17,18 +18,21 @@ import { PlayerRoleMarkers } from './PlayerRoleMarkers'
 import { Spinner } from './Spinner'
 import { humanizeResultForMatch } from '../lib/humanizeResultText'
 import { usePublicLiveHeroMeta } from '../hooks/usePublicLiveHeroMeta'
-import { computeMatchMvp } from '../lib/mvpMatch'
+import { type MatchMvpResult } from '../lib/mvpMatch'
+import { effectiveMatchMvp } from '../lib/effectiveMatchPotm'
 import { cn } from '@/lib/utils'
-import { scoreLineForSide } from '../lib/scoreLineFormat'
+import { scoreLinePartsForSide } from '../lib/scoreLineFormat'
+import { matchTeamShortLabel, teamAvatarLabel } from '../lib/teamAvatarLabel'
 import { formatBattingScorecardStatus } from '../lib/battingScorecardFormat'
-import { playerRoleMarkersPlain } from '../lib/matchPlayerRoles'
 import {
   partnershipSinceLastWicket,
-  shortName,
   wicketsTimeline,
   type FallOfWicketInfo,
 } from '../lib/publicLiveAnalytics'
 import type { MatchDoc, Side } from '../types/models'
+import { scorecardPdfDownloadFileName } from '../lib/scorecardPdfNaming'
+import { Share2 } from 'lucide-react'
+import { toast } from 'sonner'
 
 type Props = {
   match: MatchDoc & { id: string }
@@ -61,7 +65,7 @@ function xiPlayers(match: MatchDoc, side: Side) {
 
 function sr(runs: number, balls: number): string {
   if (balls <= 0) return '—'
-  return String(Math.round((runs / balls) * 100))
+  return ((runs / balls) * 100).toFixed(2)
 }
 
 function economy(runs: number, legalBalls: number, ballsPerOver: number): string {
@@ -97,13 +101,6 @@ function inningsExtras(inn: InningsSnapshot, battingSide: Side, match: MatchDoc,
   return Math.max(0, inn.runs - sumBat)
 }
 
-function teamInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (parts.length >= 2) return (parts[0]![0]! + parts[1]![0]!).toUpperCase()
-  const s = parts[0] ?? '?'
-  return s.slice(0, 2).toUpperCase()
-}
-
 /** Cricket-style * for batters still in (not dismissed, not retired hurt off the field). */
 function notOutAsterisk(
   bs: { out?: boolean; how?: string } | undefined,
@@ -116,7 +113,7 @@ function notOutAsterisk(
   return true
 }
 
-/** Live match + active innings on scorecard: * only on striker. Completed or past innings: * on all not-out. */
+/** Live tab batting table only: * on striker while innings live; all not-out rows once complete or on a past innings. */
 function showBatterNotOutStar(
   matchComplete: boolean,
   viewingInnings: 1 | 2,
@@ -136,7 +133,7 @@ function ballTimelineClass(sym: string): string {
   const base = 'public-live-ball'
   if (sym.startsWith('+')) return `${base} ${base}--extra`
   if (sym === 'Rh') return `${base} ${base}--retired-hurt`
-  if (sym === 'W' || sym === 'w') return `${base} ${base}--wicket`
+  if (sym === 'W' || sym === 'w' || /^\d+W$/i.test(sym)) return `${base} ${base}--wicket`
   if (sym.startsWith('Wd') && sym.endsWith('W')) return `${base} ${base}--wicket`
   if (sym.startsWith('Nb') && sym.includes('W')) return `${base} ${base}--wicket`
   if (sym === '⇄') return `${base} ${base}--swap`
@@ -150,14 +147,8 @@ function ballTimelineClass(sym: string): string {
   return base
 }
 
-function formatFallOfWicketEntry(
-  match: MatchDoc,
-  battingSide: Side,
-  f: FallOfWicketInfo,
-  ballsPerOver: number,
-): string {
-  const nm =
-    nameFor(match, f.dismissedId) + playerRoleMarkersPlain(match, battingSide, f.dismissedId)
+function formatFallOfWicketEntry(match: MatchDoc, f: FallOfWicketInfo, ballsPerOver: number): string {
+  const nm = nameFor(match, f.dismissedId)
   return `${f.wickets}-${f.runs} (${nm}, ${oversString(f.legalBalls, ballsPerOver)} ov)`
 }
 
@@ -177,6 +168,8 @@ function ordinalOverLabel(n: number): string {
 }
 
 export function PublicLiveScorecardDetail({ match, cfg, state, events }: Props) {
+  const playerStatsPath = (pid: string) => `/player/${pid}` as const
+
   const [mainTab, setMainTab] = useState<NavId>(() => (state.matchComplete ? 'scorecard' : 'live'))
   const [inningsPick, setInningsPick] = useState<1 | 2>(1)
   const [pdfGenerating, setPdfGenerating] = useState(false)
@@ -197,13 +190,44 @@ export function PublicLiveScorecardDetail({ match, cfg, state, events }: Props) 
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `scorecard-${match.id}.pdf`
+      a.download = scorecardPdfDownloadFileName(match)
       a.click()
       URL.revokeObjectURL(url)
     } catch (err) {
       setPdfError(err instanceof Error ? err.message : 'Could not export PDF')
     } finally {
       setPdfGenerating(false)
+    }
+  }
+
+  async function shareLiveMatchLink() {
+    const url = `${window.location.origin}/live/${match.publicId}`
+    const title = `${match.home.name} vs ${match.away.name}`
+    const text = `Follow this match: ${title}`
+
+    if (typeof navigator.share === 'function') {
+      const payloads: ShareData[] = [
+        { title, text, url },
+        { title, url },
+        { text, url },
+        { url },
+      ]
+      for (const data of payloads) {
+        try {
+          if (typeof navigator.canShare === 'function' && !navigator.canShare(data)) continue
+          await navigator.share(data)
+          return
+        } catch (err) {
+          if (err instanceof DOMException && err.name === 'AbortError') return
+        }
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(url)
+      toast.success('Link copied')
+    } catch {
+      toast.error('Could not share or copy link')
     }
   }
 
@@ -220,10 +244,28 @@ export function PublicLiveScorecardDetail({ match, cfg, state, events }: Props) 
     }
   }, [state.matchComplete, mainTab])
 
-  const navItems = useMemo(
-    () => (state.matchComplete ? NAV.filter((n) => n.id !== 'live') : NAV),
-    [state.matchComplete],
-  )
+  useEffect(() => {
+    if (mainTab !== 'mvp') return
+    if (!state.matchComplete) {
+      setMainTab('live')
+      return
+    }
+    if (match.status === 'abandoned') {
+      setMainTab('scorecard')
+    }
+  }, [state.matchComplete, match.status, mainTab])
+
+  /** MVP tab only for finished matches that were not abandoned. */
+  const showMvpTab = state.matchComplete && match.status !== 'abandoned'
+
+  const navItems = useMemo(() => {
+    if (state.matchComplete) {
+      const withoutLive = NAV.filter((n) => n.id !== 'live')
+      if (!showMvpTab) return withoutLive.filter((n) => n.id !== 'mvp')
+      return withoutLive
+    }
+    return NAV.filter((n) => n.id !== 'mvp')
+  }, [state.matchComplete, showMvpTab])
 
   const splitBowling = useMemo(() => bowlingStatsPerInnings(cfg, events), [cfg, events])
 
@@ -332,7 +374,12 @@ export function PublicLiveScorecardDetail({ match, cfg, state, events }: Props) 
     return rows
   }, [detail, liveInn, match, splitBowling, state.matchComplete])
 
-  const mvp = useMemo(() => computeMatchMvp(match, cfg, events, state), [match, cfg, events, state])
+  const mvp = useMemo((): MatchMvpResult => {
+    if (!state.matchComplete || match.status === 'abandoned') {
+      return { rows: [], potm: null, potmNote: null, potmSource: null, fieldingByPlayerId: {} }
+    }
+    return effectiveMatchMvp(match, cfg, events, state)
+  }, [state.matchComplete, match.status, match, cfg, events, state])
 
   const chaseLive = useMemo(() => {
     if (state.matchComplete || liveInn.innings !== 2) return null
@@ -378,6 +425,9 @@ export function PublicLiveScorecardDetail({ match, cfg, state, events }: Props) 
   const completedInningsSideForSummary: Side | null =
     state.innings2 && !state.matchComplete ? state.innings1.battingSide : null
 
+  const summarySidesOrder: Side[] =
+    cfg.lineup.innings1BattingSide === 'away' ? ['away', 'home'] : ['home', 'away']
+
   return (
     <div className="public-live-detail">
       {(heroMetaLine || !state.matchComplete) && (
@@ -396,33 +446,60 @@ export function PublicLiveScorecardDetail({ match, cfg, state, events }: Props) 
 
       <div className="card score-live-summary public-live-score-card">
         <div className="score-live-summary-top">
-          <div
-            className={cn(
-              'score-live-side score-live-side--home',
-              completedInningsSideForSummary === 'home' && 'score-live-side--completed-innings',
-            )}
-          >
-            <span className="score-live-side-label">{match.home.name}</span>
-            <div className="score-live-side-main">
-              <span className="score-live-side-avatar">{teamInitials(match.home.name)}</span>
-              <div className="score-live-side-score">{scoreLineForSide(state, cfg, 'home')}</div>
-            </div>
-          </div>
-          <div className="score-live-vs">VS</div>
-          <div
-            className={cn(
-              'score-live-side score-live-side--away',
-              completedInningsSideForSummary === 'away' && 'score-live-side--completed-innings',
-            )}
-          >
-            <span className="score-live-side-label">{match.away.name}</span>
-            <div className="score-live-side-main">
-              <span className="score-live-side-avatar score-live-side-avatar--away">
-                {teamInitials(match.away.name)}
-              </span>
-              <div className="score-live-side-score">{scoreLineForSide(state, cfg, 'away')}</div>
-            </div>
-          </div>
+          {summarySidesOrder.map((side) => {
+            const scoreParts = scoreLinePartsForSide(state, cfg, side)
+            const t = side === 'home' ? match.home : match.away
+            const avatarLabel = teamAvatarLabel(t)
+            const isResultLoser =
+              match.status === 'completed' &&
+              state.matchComplete &&
+              state.winner != null &&
+              state.winner !== 'tie' &&
+              state.winner !== side
+            return (
+              <div
+                key={side}
+                className={cn(
+                  'score-live-side',
+                  side === 'home' ? 'score-live-side--home' : 'score-live-side--away',
+                  completedInningsSideForSummary === side && 'score-live-side--completed-innings',
+                  isResultLoser && 'score-live-side--result-loser',
+                )}
+              >
+                <div className="score-live-side-main">
+                <span
+                  className={cn(
+                    'score-live-side-avatar',
+                    side === 'away' && 'score-live-side-avatar--away',
+                    avatarLabel.length > 2 && 'score-live-side-avatar--compact',
+                  )}
+                >
+                  {avatarLabel}
+                </span>
+                <span className="score-live-side-label">
+                  {t.name}
+                </span>
+                  <div className="score-live-side-score">
+                    {scoreParts.kind === 'yet' ? (
+                      scoreParts.text
+                    ) : (
+                      <>
+                        <span className="score-live-side-rw">
+                          {scoreParts.rw}
+                        </span>
+                        {scoreParts.overs ? (
+                          <>
+                            {' '}
+                            <span className="score-live-side-overs">{scoreParts.overs}</span>
+                          </>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
         </div>
 
         {!state.matchComplete && (
@@ -478,36 +555,46 @@ export function PublicLiveScorecardDetail({ match, cfg, state, events }: Props) 
               </button>
             ))}
           </div>
-          {state.matchComplete && (
+          <div className="public-live-nav-actions">
             <button
               type="button"
-              className="btn ghost public-live-nav-pdf"
-              disabled={pdfGenerating}
-              onClick={() => void downloadScorecardPdf()}
-              aria-label={pdfGenerating ? 'Generating PDF' : 'Download scorecard PDF'}
+              className="btn ghost public-live-nav-share"
+              onClick={() => void shareLiveMatchLink()}
+              aria-label="Share link to this match"
             >
-              {pdfGenerating ? (
-                <Spinner size="sm" label="Generating PDF" />
-              ) : (
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden
-                >
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="7 10 12 15 17 10" />
-                  <line x1="12" x2="12" y1="15" y2="3" />
-                </svg>
-              )}
+              <Share2 width={20} height={20} strokeWidth={2} aria-hidden />
             </button>
-          )}
+            {state.matchComplete && (
+              <button
+                type="button"
+                className="btn ghost public-live-nav-pdf"
+                disabled={pdfGenerating}
+                onClick={() => void downloadScorecardPdf()}
+                aria-label={pdfGenerating ? 'Generating PDF' : 'Download scorecard PDF'}
+              >
+                {pdfGenerating ? (
+                  <Spinner size="sm" label="Generating PDF" />
+                ) : (
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden
+                  >
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" x2="12" y1="15" y2="3" />
+                  </svg>
+                )}
+              </button>
+            )}
+          </div>
         </div>
       </nav>
       {state.matchComplete && pdfError && (
@@ -542,7 +629,9 @@ export function PublicLiveScorecardDetail({ match, cfg, state, events }: Props) 
                         <tr key={p.playerId} className={active ? 'public-live-row-active' : undefined}>
                           <td className="score-live-name">
                             <div>
-                              {p.name}
+                              <Link to={playerStatsPath(p.playerId)} className="public-live-player-stats-link">
+                                {p.name}
+                              </Link>
                               <PlayerRoleMarkers match={match} side={liveInn.battingSide} playerId={p.playerId} />
                               {showBatterNotOutStar(
                                 state.matchComplete,
@@ -584,8 +673,9 @@ export function PublicLiveScorecardDetail({ match, cfg, state, events }: Props) 
                       <tr key={id} className={id === liveInn.bowlerId ? 'public-live-row-active' : undefined}>
                         <td className="score-live-name">
                           <div>
-                            {name}
-                            <PlayerRoleMarkers match={match} side={opp(liveInn.battingSide)} playerId={id} />
+                            <Link to={playerStatsPath(id)} className="public-live-player-stats-link">
+                              {name}
+                            </Link>
                           </div>
                         </td>
                         <td className="num muted">{bowlerOversDisplay(stats.legalBalls, cfg.ballsPerOver)}</td>
@@ -664,26 +754,26 @@ export function PublicLiveScorecardDetail({ match, cfg, state, events }: Props) 
         </>
       )}
 
-      {mainTab === 'mvp' && (
+      {mainTab === 'mvp' && showMvpTab && (
         <section className="public-live-mvp public-live-tab-panel" aria-labelledby="public-live-mvp-title">
           <h3 id="public-live-mvp-title" className="public-live-table-title">
             Most Valuable Player (MVP)
           </h3>
-          {state.matchComplete && mvp.potm && (
+          {mvp.potm && (
             <div className="public-live-mvp-potm" role="status">
               <span className="public-live-mvp-potm-label">Player of the Match</span>
-              <span className="public-live-mvp-potm-name">{mvp.potm.name}</span>
+              <span className="public-live-mvp-potm-name">
+                <Link to={playerStatsPath(mvp.potm.playerId)} className="public-live-player-stats-link">
+                  {mvp.potm.name}
+                </Link>
+              </span>
               <span className="muted small public-live-mvp-potm-team">
                 {mvp.potm.side === 'home' ? match.home.name : match.away.name}
               </span>
-              {mvp.potmNote ? <p className="public-live-mvp-potm-note muted small">{mvp.potmNote}</p> : null}
+              {mvp.potmNote ? (
+                <p className="public-live-mvp-potm-note muted small">{mvp.potmNote}</p>
+              ) : null}
             </div>
-          )}
-          {!state.matchComplete && (
-            <p className="muted small public-live-mvp-livehint">
-              Live match — standings update with each ball. Player of the Match is awarded when the
-              match finishes.
-            </p>
           )}
           {mvp.rows.length === 0 ? (
             <p className="muted small">No squad line-ups on file; MVP cannot be computed.</p>
@@ -693,10 +783,12 @@ export function PublicLiveScorecardDetail({ match, cfg, state, events }: Props) 
                 <thead>
                   <tr>
                     <th>Player</th>
+                    <th>Team</th>
+                    <th className="num">Total</th>
                     <th className="num">Bat</th>
                     <th className="num">Bowl</th>
                     <th className="num">Fld</th>
-                    <th className="num">Total</th>
+                    <th className="num">Imp.</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -704,23 +796,24 @@ export function PublicLiveScorecardDetail({ match, cfg, state, events }: Props) 
                     <tr
                       key={r.playerId}
                       className={
-                        state.matchComplete && mvp.potm?.playerId === r.playerId
-                          ? 'public-live-mvp-row-potm'
-                          : undefined
+                        mvp.potm?.playerId === r.playerId ? 'public-live-mvp-row-potm' : undefined
                       }
                     >
                       <td>
-                        <span className="public-live-batter-name">{shortName(r.name, 28)}</span>
-                        <PlayerRoleMarkers match={match} side={r.side} playerId={r.playerId} />
-                        <span className="muted small public-live-mvp-side">
-                          {' '}
-                          ({r.side === 'home' ? match.home.name : match.away.name})
+                        <span className="public-live-batter-name">
+                          <Link to={playerStatsPath(r.playerId)} className="public-live-player-stats-link">
+                            {r.name}
+                          </Link>
                         </span>
                       </td>
-                      <td className="num">{r.batting.toFixed(2)}</td>
-                      <td className="num">{r.bowling.toFixed(2)}</td>
-                      <td className="num">{r.fielding.toFixed(2)}</td>
-                      <td className="num public-live-mvp-total">{r.total.toFixed(2)}</td>
+                      <td className="public-live-mvp-team-cell">
+                        {matchTeamShortLabel(r.side === 'home' ? match.home : match.away)}
+                      </td>
+                      <td className="num public-live-mvp-total">{r.total.toFixed(0)}</td>
+                      <td className="num">{r.batting.toFixed(0)}</td>
+                      <td className="num">{r.bowling.toFixed(0)}</td>
+                      <td className="num">{r.fielding.toFixed(0)}</td>
+                      <td className="num">{r.impact.toFixed(0)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -780,22 +873,14 @@ export function PublicLiveScorecardDetail({ match, cfg, state, events }: Props) 
                     <tr key={p.playerId}>
                       <td>
                         <span className="public-live-batter-name">
-                          {p.name}
+                          <Link to={playerStatsPath(p.playerId)} className="public-live-player-stats-link">
+                            {p.name}
+                          </Link>
                           <PlayerRoleMarkers
                             match={match}
                             side={battingSideForTab}
                             playerId={p.playerId}
                           />
-                          {showBatterNotOutStar(
-                            state.matchComplete,
-                            inningsPick,
-                            state.activeInnings as 1 | 2,
-                            innSnap,
-                            bs,
-                            p.playerId,
-                          )
-                            ? '*'
-                            : ''}
                         </span>
                         <span
                           className="muted small public-live-batter-sub"
@@ -841,7 +926,7 @@ export function PublicLiveScorecardDetail({ match, cfg, state, events }: Props) 
               </p>
               <p className="public-live-fow-body">
                 {scorecardFow
-                  .map((f) => formatFallOfWicketEntry(match, battingSideForTab, f, cfg.ballsPerOver))
+                  .map((f) => formatFallOfWicketEntry(match, f, cfg.ballsPerOver))
                   .join(', ')}
               </p>
             </div>
@@ -854,7 +939,9 @@ export function PublicLiveScorecardDetail({ match, cfg, state, events }: Props) 
                 {detail.yetTo.map((p, i) => (
                   <span key={p.playerId}>
                     {i > 0 ? ' · ' : null}
-                    {p.name}
+                    <Link to={playerStatsPath(p.playerId)} className="public-live-player-stats-link">
+                      {p.name}
+                    </Link>
                     <PlayerRoleMarkers match={match} side={battingSideForTab} playerId={p.playerId} />
                   </span>
                 ))}
@@ -881,8 +968,9 @@ export function PublicLiveScorecardDetail({ match, cfg, state, events }: Props) 
                 {detail.bowlRows.map(({ id, name, stats }) => (
                   <tr key={id}>
                     <td>
-                      {name}
-                      <PlayerRoleMarkers match={match} side={detail.bowlingSide} playerId={id} />
+                      <Link to={playerStatsPath(id)} className="public-live-player-stats-link">
+                        {name}
+                      </Link>
                     </td>
                     <td className="num">{bowlerOversDisplay(stats.legalBalls, cfg.ballsPerOver)}</td>
                     <td className="num">0</td>

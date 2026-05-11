@@ -1,4 +1,5 @@
 import {
+  BarChart3,
   CalendarDays,
   LogOut,
   Menu,
@@ -128,6 +129,18 @@ function MobileAccountDrawer({
             >
               <Trophy className="size-5 shrink-0 text-primary" strokeWidth={2.2} aria-hidden />
               My Tournaments
+            </Link>
+            <Link
+              to="/app/my-stats"
+              className={cn(
+                navBase,
+                pathname.startsWith("/app/my-stats") ? navActive : navIdle,
+              )}
+              aria-current={pathname.startsWith("/app/my-stats") ? "page" : undefined}
+              onClick={close}
+            >
+              <BarChart3 className="size-5 shrink-0 text-primary" strokeWidth={2.2} aria-hidden />
+              My stats
             </Link>
           </nav>
 
@@ -265,7 +278,8 @@ export function PublicMobileFooter() {
       isActive: (pathname) =>
         pathname === "/" ||
         pathname === "/matches" ||
-        pathname.startsWith("/live/"),
+        pathname.startsWith("/live/") ||
+        pathname.startsWith("/player/"),
     },
     {
       to: "/tournaments",
@@ -280,7 +294,8 @@ export function PublicMobileFooter() {
       isActive: (pathname) =>
         pathname === "/login" ||
         pathname === "/register" ||
-        pathname.startsWith("/app/profile"),
+        pathname.startsWith("/app/profile") ||
+        pathname === "/app/my-stats",
     },
   ];
   return <MobileBottomTabs items={items} />;

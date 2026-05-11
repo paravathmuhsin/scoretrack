@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
 import { Button } from '@/components/ui/button'
+import { BtnPendingLabel } from '@/components/Spinner'
 import { cn } from '@/lib/utils'
 import { getDb } from '../firebase/config'
 import { recomputeTournament } from '../lib/recomputeTournament'
@@ -42,6 +43,8 @@ export function TournamentPointsPanel({ tournamentId: id, variant = 'embedded' }
   const [tournament, setTournament] = useState<(TournamentDoc & { id: string }) | null>(null)
   const [standings, setStandings] = useState<StandingsDoc | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [recomputePending, setRecomputePending] = useState(false)
+  const [exportPending, setExportPending] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -62,30 +65,38 @@ export function TournamentPointsPanel({ tournamentId: id, variant = 'embedded' }
   }, [id])
 
   async function refresh() {
-    if (!id) return
+    if (!id || recomputePending) return
     setError(null)
+    setRecomputePending(true)
     try {
       await recomputeTournament(id)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Recompute failed')
+    } finally {
+      setRecomputePending(false)
     }
   }
 
   async function exportPdf() {
-    if (!tournament) return
-    const [{ pdf }, { StatsPdfDocument }] = await Promise.all([
-      import('@react-pdf/renderer'),
-      import('../pdf/StatsPdf'),
-    ])
-    const blob = await pdf(
-      <StatsPdfDocument tournamentName={tournament.name} standings={standings} />,
-    ).toBlob()
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `points-${id}.pdf`
-    a.click()
-    URL.revokeObjectURL(url)
+    if (!tournament || exportPending) return
+    setExportPending(true)
+    try {
+      const [{ pdf }, { StatsPdfDocument }] = await Promise.all([
+        import('@react-pdf/renderer'),
+        import('../pdf/StatsPdf'),
+      ])
+      const blob = await pdf(
+        <StatsPdfDocument tournamentName={tournament.name} standings={standings} />,
+      ).toBlob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `points-${id}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      setExportPending(false)
+    }
   }
 
   if (!id) return <p className="muted">Missing tournament.</p>
@@ -149,27 +160,48 @@ export function TournamentPointsPanel({ tournamentId: id, variant = 'embedded' }
       >
         {tournament.createdBy === user?.uid &&
           (publicTab ? (
-            <Button type="button" onClick={() => void refresh()}>
-              Recompute from matches
+            <Button type="button" disabled={recomputePending} onClick={() => void refresh()}>
+              <BtnPendingLabel
+                pending={recomputePending}
+                idle="Recompute from matches"
+                busyText="Recomputing…"
+              />
             </Button>
           ) : (
-            <button type="button" className="btn primary" onClick={() => void refresh()}>
-              Recompute from matches
+            <button
+              type="button"
+              className="btn primary"
+              disabled={recomputePending}
+              aria-busy={recomputePending}
+              onClick={() => void refresh()}
+            >
+              <BtnPendingLabel
+                pending={recomputePending}
+                idle="Recompute from matches"
+                busyText="Recomputing…"
+              />
             </button>
           ))}
         {publicTab ? (
           <Button
             type="button"
             variant="outline"
+            disabled={exportPending}
             onClick={() => void exportPdf()}
             aria-label="Export points table PDF"
           >
             <ScorecardPdfDownloadIcon />
-            Export PDF
+            <BtnPendingLabel pending={exportPending} idle="Export PDF" busyText="Exporting PDF…" />
           </Button>
         ) : (
-          <button type="button" className="btn" onClick={() => void exportPdf()}>
-            Export PDF
+          <button
+            type="button"
+            className="btn"
+            disabled={exportPending}
+            aria-busy={exportPending}
+            onClick={() => void exportPdf()}
+          >
+            <BtnPendingLabel pending={exportPending} idle="Export PDF" busyText="Exporting PDF…" />
           </button>
         )}
       </div>

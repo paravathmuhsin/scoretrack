@@ -19,8 +19,10 @@ import {
   publicTournamentMatchHeadMeta,
   publicTournamentMatchKicker,
 } from '../components/tournament/tournamentPublicDisplay'
+import { PublicTournamentMatchScoreLines } from '../components/PublicTournamentMatchScoreLines'
 import { TournamentPointsPanel } from '../components/TournamentPointsPanel'
 import { getDb } from '../firebase/config'
+import { useTournamentDetailsDocumentTitle } from '../hooks/useTournamentDetailsDocumentTitle'
 import { cn } from '@/lib/utils'
 import { compareMatchesOperationalOrder } from '../lib/matchListSort'
 import {
@@ -93,6 +95,8 @@ export function PublicTournamentDetailPage() {
       setT({ id: snap.id, ...(snap.data() as TournamentDoc) })
     })
   }, [id])
+
+  useTournamentDetailsDocumentTitle(t)
 
   useEffect(() => {
     if (!id || !canView || !t) return
@@ -452,6 +456,7 @@ export function PublicTournamentDetailPage() {
                         </span>
                         <span className="match-scorecard-teamname">{m.away.name}</span>
                       </p>
+                      <PublicTournamentMatchScoreLines match={m} />
                     </div>
 
                     <div className="match-scorecard-upcoming-footer public-tournament-match-card-footer">

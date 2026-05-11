@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  battersYetToPlayIds,
   formatExtrasBreakdownLine,
   initialReplayState,
   inningsExtrasBreakdownFromBalls,
@@ -8,7 +9,11 @@ import {
   maxWickets,
   needsNewBowlerBeforeNextBall,
   opp,
+  oversLimitDisplay,
+  oversProgressString,
+  oversString,
   replayEvents,
+  runsForStrikeRotation,
   symbolForBall,
   symbolsThisOver,
   totalRunsOnDelivery,
@@ -64,6 +69,128 @@ describe('totalRunsOnDelivery', () => {
   it('counts wide penalty', () => {
     const b = ball(cfg(true), { delivery: 'wide', runsOffBat: 0 })
     expect(totalRunsOnDelivery(b)).toBe(1)
+  })
+})
+
+describe('runsForStrikeRotation', () => {
+  it('excludes wide penalty so plain wide does not contribute to rotation parity', () => {
+    const b = ball(cfg(true), { delivery: 'wide', runsOffBat: 0 })
+    expect(runsForStrikeRotation(b)).toBe(0)
+    expect(totalRunsOnDelivery(b)).toBe(1)
+  })
+
+  it('includes extra wide runs and bye/leg-bye on wide', () => {
+    const c = cfg(true)
+    expect(
+      runsForStrikeRotation(ball(c, { delivery: 'wide', runsOffBat: 0, extraWideRuns: 2 })),
+    ).toBe(2)
+    expect(
+      runsForStrikeRotation(
+        ball(c, { delivery: 'wide', runsOffBat: 0, byeRuns: 1 }),
+      ),
+    ).toBe(1)
+  })
+
+  it('excludes no-ball penalty', () => {
+    const b = ball(cfg(true), { delivery: 'noball', runsOffBat: 0 })
+    expect(runsForStrikeRotation(b)).toBe(0)
+    expect(totalRunsOnDelivery(b)).toBe(1)
+  })
+
+  it('matches legal delivery total (byes / leg-byes)', () => {
+    const c = cfg(true)
+    expect(runsForStrikeRotation(ball(c, { delivery: 'legal', runsOffBat: 0, byeRuns: 3 }))).toBe(
+      3,
+    )
+    expect(runsForStrikeRotation(ball(c, { delivery: 'legal', runsOffBat: 1, byeRuns: 1 }))).toBe(
+      2,
+    )
+  })
+})
+
+describe('strike rotation on extras', () => {
+  it('does not swap ends on a plain wide (penalty only)', () => {
+    const c = cfg(true)
+    const events: ScoreEvent[] = [
+      { seq: 1, kind: 'ball', ball: ball(c, { delivery: 'wide', runsOffBat: 0 }) },
+    ]
+    const s = replayEvents(c, events)
+    expect(s.innings1.runs).toBe(1)
+    expect(s.innings1.strikerId).toBe('h1')
+    expect(s.innings1.nonStrikerId).toBe('h2')
+  })
+
+  it('swaps ends when wide has additional runs', () => {
+    const c = cfg(true)
+    const events: ScoreEvent[] = [
+      { seq: 1, kind: 'ball', ball: ball(c, { delivery: 'wide', runsOffBat: 0, extraWideRuns: 1 }) },
+    ]
+    const s = replayEvents(c, events)
+    expect(s.innings1.runs).toBe(2)
+    expect(s.innings1.strikerId).toBe('h2')
+  })
+
+  it('does not swap on plain no-ball', () => {
+    const c = cfg(true)
+    const events: ScoreEvent[] = [
+      { seq: 1, kind: 'ball', ball: ball(c, { delivery: 'noball', runsOffBat: 0 }) },
+    ]
+    const s = replayEvents(c, events)
+    expect(s.innings1.runs).toBe(1)
+    expect(s.innings1.strikerId).toBe('h1')
+  })
+
+  it('still rotates on legal bye runs only', () => {
+    const c = cfg(true)
+    const events: ScoreEvent[] = [
+      { seq: 1, kind: 'ball', ball: ball(c, { delivery: 'legal', runsOffBat: 0, byeRuns: 1 }) },
+    ]
+    const s = replayEvents(c, events)
+    expect(s.innings1.strikerId).toBe('h2')
+  })
+})
+
+describe('wicket on last ball of over', () => {
+  it('swaps ends so former non-striker faces after striker out on 6th legal ball', () => {
+    const c = cfg(true)
+    const events: ScoreEvent[] = []
+    let seq = 1
+    for (let i = 0; i < 5; i++) {
+      events.push({ seq: seq++, kind: 'ball', ball: ball(c, { delivery: 'legal', runsOffBat: 0 }) })
+    }
+    events.push({
+      seq: seq++,
+      kind: 'ball',
+      ball: {
+        ...ball(c, { delivery: 'legal', runsOffBat: 0 }),
+        wicket: { dismissedId: 'h1', howOut: 'Bowled', newBatsmanId: 'h3' },
+      },
+    })
+    const s = replayEvents(c, events)
+    expect(s.innings1.legalBalls).toBe(6)
+    expect(s.innings1.strikerId).toBe('h2')
+    expect(s.innings1.nonStrikerId).toBe('h3')
+  })
+
+  it('swaps ends after non-striker out on 6th legal ball', () => {
+    const c = cfg(true)
+    const events: ScoreEvent[] = []
+    let seq = 1
+    for (let i = 0; i < 5; i++) {
+      events.push({ seq: seq++, kind: 'ball', ball: ball(c, { delivery: 'legal', runsOffBat: 0 }) })
+    }
+    events.push({
+      seq: seq++,
+      kind: 'ball',
+      ball: {
+        ...ball(c, { delivery: 'legal', runsOffBat: 0 }),
+        wicket: { dismissedId: 'h2', howOut: 'Run out', newBatsmanId: 'h3' },
+      },
+    })
+    const s = replayEvents(c, events)
+    expect(s.innings1.legalBalls).toBe(6)
+    expect(s.innings1.strikerId).toBe('h3')
+    expect(s.innings1.nonStrikerId).toBe('h1')
   })
 })
 
@@ -235,6 +362,27 @@ describe('symbolForBall', () => {
     expect(symbolForBall(b)).toBe('Nb1')
     expect(totalRunsOnDelivery(b)).toBe(2)
   })
+
+  it('shows legal wicket with runs scored on the same delivery (e.g. run out + 1)', () => {
+    const c = cfg(true)
+    const b = ball(c, {
+      delivery: 'legal',
+      runsOffBat: 0,
+      byeRuns: 1,
+      wicket: { dismissedId: 'h1', howOut: 'Run out', newBatsmanId: 'h3' },
+    })
+    expect(symbolForBall(b)).toBe('1W')
+  })
+
+  it('shows plain W for legal wicket with zero runs on the ball', () => {
+    const c = cfg(true)
+    const b = ball(c, {
+      delivery: 'legal',
+      runsOffBat: 0,
+      wicket: { dismissedId: 'h1', howOut: 'Bowled', newBatsmanId: 'h3' },
+    })
+    expect(symbolForBall(b)).toBe('W')
+  })
 })
 
 describe('retired hurt', () => {
@@ -264,6 +412,67 @@ describe('retired hurt', () => {
     expect(s.batterStats.h1?.out).toBe(false)
     expect(symbolForBall(b)).toBe('Rh')
     expect(s.recentBalls.includes('Rh')).toBe(false)
+  })
+
+  it('when a retired hurt batter returns as new batsman, clears retired flag and keeps prior runs', () => {
+    const c = cfg(true)
+    const events: ScoreEvent[] = [
+      { seq: 1, kind: 'ball', ball: ball(c, { delivery: 'legal', runsOffBat: 4 }) },
+      {
+        seq: 2,
+        kind: 'ball',
+        ball: ball(c, {
+          delivery: 'legal',
+          runsOffBat: 0,
+          noDelivery: true,
+          wicket: {
+            dismissedId: 'h1',
+            howOut: 'Retired hurt',
+            newBatsmanId: 'h3',
+            countsAsWicket: false,
+          },
+        }),
+      },
+      {
+        seq: 3,
+        kind: 'ball',
+        ball: ball(c, {
+          delivery: 'legal',
+          runsOffBat: 0,
+          wicket: { dismissedId: 'h2', howOut: 'Bowled', newBatsmanId: 'h1' },
+        }),
+      },
+    ]
+    const s = replayEvents(c, events)
+    expect(s.innings1.retiredOffField.has('h1')).toBe(false)
+    expect(s.batterStats.h1?.how).toBeUndefined()
+    expect(s.batterStats.h1?.runs).toBe(4)
+    expect(s.innings1.nonStrikerId).toBe('h1')
+  })
+})
+
+describe('battersYetToPlayIds', () => {
+  it('includes retired hurt players who may return as incoming batsman', () => {
+    const c = cfg(true)
+    const rh: BallEventPayload = ball(c, {
+      delivery: 'legal',
+      runsOffBat: 0,
+      noDelivery: true,
+      wicket: {
+        dismissedId: 'h1',
+        howOut: 'Retired hurt',
+        newBatsmanId: 'h3',
+        countsAsWicket: false,
+      },
+    })
+    const s = replayEvents(c, [{ seq: 1, kind: 'ball', ball: rh }])
+    const inn = s.innings1
+    const xi = c.lineup.homeXI
+    // h2 dismissed: partner is h3 (striker); h1 is retired hurt and should be pickable
+    expect(battersYetToPlayIds(xi, inn, 'h2')).toContain('h1')
+    expect(battersYetToPlayIds(xi, inn, 'h2')).toContain('h4')
+    expect(battersYetToPlayIds(xi, inn, 'h2')).not.toContain('h2')
+    expect(battersYetToPlayIds(xi, inn, 'h2')).not.toContain('h3')
   })
 })
 
@@ -352,5 +561,23 @@ describe('initialReplayState', () => {
     const c = cfg(true)
     const s = initialReplayState(c)
     expect(s.innings1.strikerId).toBe('h1')
+  })
+})
+
+describe('overs display', () => {
+  it('oversString omits .0 for complete overs', () => {
+    expect(oversString(12, 6)).toBe('2')
+    expect(oversString(0, 6)).toBe('0')
+    expect(oversString(15, 6)).toBe('2.3')
+  })
+
+  it('oversProgressString combines current and cap', () => {
+    expect(oversProgressString(12, 6, 2)).toBe('2/2')
+    expect(oversProgressString(15, 6, 20)).toBe('2.3/20')
+  })
+
+  it('oversLimitDisplay normalizes near-integer floats', () => {
+    expect(oversLimitDisplay(20)).toBe('20')
+    expect(oversLimitDisplay(19.9999995)).toBe('20')
   })
 })

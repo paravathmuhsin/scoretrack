@@ -18,26 +18,10 @@ import type {
   TournamentLinkedTeamDoc,
 } from '../types/models'
 import { fetchMatchEvents } from './matchEvents'
+import { effectiveMatchMvp } from './effectiveMatchPotm'
 import { tournamentLeaguePoints } from './tournamentPoints'
-import { replayEvents, type ReplayConfig, type ReplayState, type ScoreEvent } from '../scoring/engine'
+import { replayEvents, type ReplayConfig, type ReplayState } from '../scoring/engine'
 import { getDb } from '../firebase/config'
-
-/** Per-fielder wicket assists (catch / run out / stumping) from ball events, respecting undo. */
-function fieldingDismissalsByPlayer(events: ScoreEvent[]): Map<string, number> {
-  const sorted = [...events].sort((a, b) => a.seq - b.seq)
-  const undone = new Set<number>()
-  for (const e of sorted) {
-    if (e.kind === 'undo') undone.add(e.revertedSeq)
-  }
-  const m = new Map<string, number>()
-  for (const e of sorted) {
-    if (e.kind !== 'ball' || undone.has(e.seq)) continue
-    const fid = e.ball?.wicket?.fielderId
-    if (!fid) continue
-    m.set(fid, (m.get(fid) ?? 0) + 1)
-  }
-  return m
-}
 
 function nrr(rf: number, of: number, ra: number, oa: number): number {
   if (oa === 0 || of === 0) return 0
@@ -230,8 +214,8 @@ async function aggregateOneMatch(
     playerAgg.set(key, cur)
   }
 
-  const fieldingMap = fieldingDismissalsByPlayer(events)
-  for (const [pid, fd] of fieldingMap) {
+  const mvp = effectiveMatchMvp({ ...m, id: md.id } as MatchDoc & { id: string }, cfg, events, state)
+  for (const [pid, fg] of Object.entries(mvp.fieldingByPlayerId)) {
     const side = m.lineup!.homeXI.includes(pid) ? 'home' : 'away'
     const tid = side === 'home' ? hk : ak
     const name =
@@ -253,8 +237,29 @@ async function aggregateOneMatch(
         fieldingDismissals: 0,
         mvpScore: 0,
       } satisfies PlayerAggRow)
+    const fd = fg.catches + fg.runOuts + fg.stumpings
     cur.fieldingDismissals += fd
+    cur.catches = (cur.catches ?? 0) + fg.catches
+    cur.runOuts = (cur.runOuts ?? 0) + fg.runOuts
+    cur.stumpings = (cur.stumpings ?? 0) + fg.stumpings
     playerAgg.set(key, cur)
+  }
+
+  if (playerAgg) {
+    for (const r of mvp.rows) {
+      const tid = r.side === 'home' ? homeKey : awayKey
+      const key = `${tid}_${r.playerId}`
+      const cur = playerAgg.get(key)
+      if (cur) cur.mvpScore += r.total
+    }
+    const potmPid = mvp.potm?.playerId
+    if (potmPid) {
+      const side = m.lineup!.homeXI.includes(potmPid) ? 'home' : 'away'
+      const tid = side === 'home' ? hk : ak
+      const key = `${tid}_${potmPid}`
+      const cur = playerAgg.get(key)
+      if (cur) cur.potmAwards = (cur.potmAwards ?? 0) + 1
+    }
   }
 }
 
@@ -321,10 +326,6 @@ export async function recomputeTournament(tournamentId: string): Promise<void> {
     await aggregateOneMatch(md, teamById, rows, playerAgg, () => true)
   }
 
-  for (const p of playerAgg.values()) {
-    p.mvpScore = Math.round(p.runs + 20 * p.wickets + 10 * p.fieldingDismissals)
-  }
-
   const teams = rowsToStandings(rows)
 
   await setDoc(doc(db, 'tournaments', tournamentId, 'standings', 'summary'), {
@@ -332,7 +333,7 @@ export async function recomputeTournament(tournamentId: string): Promise<void> {
     teams,
   })
 
-  const players = [...playerAgg.values()].sort((a, b) => b.runs - a.runs)
+  const players = [...playerAgg.values()].sort((a, b) => b.mvpScore - a.mvpScore || b.runs - a.runs)
   await setDoc(doc(db, 'tournaments', tournamentId, 'stats', 'summary'), {
     updatedAt: serverTimestamp(),
     players,

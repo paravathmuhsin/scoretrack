@@ -121,6 +121,22 @@ export function totalRunsOnDelivery(b: BallEventPayload): number {
   return b.runsOffBat + b.byeRuns + b.legByeRuns
 }
 
+/**
+ * Runs used for odd/even strike rotation after a non-wicket ball.
+ * For wide / no-ball, the automatic penalty run (1 for wd, 1 for nb) does not
+ * swap ends; only additional runs from that extra (extra wide / extra no-ball,
+ * off bat, byes, leg-byes) count. Legal deliveries: same as total scoring runs.
+ */
+export function runsForStrikeRotation(b: BallEventPayload): number {
+  if (b.delivery === 'wide') {
+    return b.extraWideRuns + b.runsOffBat + b.byeRuns + b.legByeRuns
+  }
+  if (b.delivery === 'noball') {
+    return b.extraNoBallRuns + b.runsOffBat + b.byeRuns + b.legByeRuns
+  }
+  return b.runsOffBat + b.byeRuns + b.legByeRuns
+}
+
 /** Runs from wides (incl. 1st wide); no-balls (incl. 1st nb); byes; leg-byes — matches scorecard “extras” splits. */
 export type InningsExtrasBreakdown = { wd: number; nb: number; b: number; lb: number }
 
@@ -193,7 +209,10 @@ export function symbolForBall(b: BallEventPayload): string {
     const extra = b.extraNoBallRuns + b.runsOffBat + b.byeRuns + b.legByeRuns
     return extra > 0 ? `Nb${extra}W` : 'NbW'
   }
-  if (b.wicket) return 'W'
+  if (b.wicket) {
+    const r = b.runsOffBat + b.byeRuns + b.legByeRuns
+    return r > 0 ? `${r}W` : 'W'
+  }
   if (b.delivery === 'wide') {
     const extra = b.extraWideRuns + b.runsOffBat + b.byeRuns + b.legByeRuns
     return extra > 0 ? `Wd${extra}` : 'Wd'
@@ -264,7 +283,11 @@ export function currentInnings(state: ReplayState): InningsSnapshot {
   return state.activeInnings === 1 ? state.innings1 : state.innings2!
 }
 
-/** Batting XI members who have not yet played this innings (never at the crease). Excludes dismissed and the non-out partner. */
+/**
+ * Batting XI members eligible as the incoming batter after a wicket (Fall of wicket “New batsman”).
+ * Includes players who have never faced a ball this innings, and players **retired hurt** who may return
+ * (`retiredOffField`). Excludes dismissed batters and the non-out partner at the crease.
+ */
 export function battersYetToPlayIds(
   battingXiIds: string[],
   inn: InningsSnapshot,
@@ -273,9 +296,13 @@ export function battersYetToPlayIds(
   const out = new Set(inn.dismissed)
   out.add(pendingDismissedId)
   const partner = pendingDismissedId === inn.strikerId ? inn.nonStrikerId : inn.strikerId
-  return battingXiIds.filter(
-    (id) => !out.has(id) && id !== partner && !inn.appearedBatIds.has(id),
-  )
+  return battingXiIds.filter((id) => {
+    if (out.has(id)) return false
+    if (id === partner) return false
+    if (!inn.appearedBatIds.has(id)) return true
+    if (inn.retiredOffField.has(id)) return true
+    return false
+  })
 }
 
 export function maxBallsPerBowlerPerInnings(cfg: ReplayConfig): number | null {
@@ -517,6 +544,7 @@ export function applyBall(cfg: ReplayConfig, state: ReplayState, b: BallEventPay
   ensureBowler(state.bowlerStats, bowler)
 
   const runsTotal = totalRunsOnDelivery(b)
+  const runsRotate = runsForStrikeRotation(b)
 
   if (!b.noDelivery) {
     inn.runs += runsTotal
@@ -584,17 +612,19 @@ export function applyBall(cfg: ReplayConfig, state: ReplayState, b: BallEventPay
       if (nb?.how === 'Retired hurt') delete nb.how
     }
   } else {
-    // strike rotation on total runs (including extras)
-    if (runsTotal % 2 === 1) {
+    // Strike rotation: wd/nb penalty runs do not swap; only additional runs on the extra do.
+    if (runsRotate % 2 === 1) {
       const t = inn.strikerId
       inn.strikerId = inn.nonStrikerId
       inn.nonStrikerId = t
     }
-    if (countsAsLegalBall(b) && inn.legalBalls % cfg.ballsPerOver === 0) {
-      const t2 = inn.strikerId
-      inn.strikerId = inn.nonStrikerId
-      inn.nonStrikerId = t2
-    }
+  }
+
+  // Change of ends after a completed over (legal ball 6, 12, …) — applies after wickets too.
+  if (countsAsLegalBall(b) && inn.legalBalls % cfg.ballsPerOver === 0) {
+    const t2 = inn.strikerId
+    inn.strikerId = inn.nonStrikerId
+    inn.nonStrikerId = t2
   }
 
   const ballSym = symbolForBall(b)
@@ -1017,25 +1047,41 @@ export function replayEvents(cfg: ReplayConfig, events: ScoreEvent[]): ReplaySta
   return state
 }
 
+/** Overs as `o` or `o.b`; whole overs omit `.0` (e.g. `2` not `2.0`). */
 export function oversString(legalBalls: number, ballsPerOver: number): string {
   const o = Math.floor(legalBalls / ballsPerOver)
   const b = legalBalls % ballsPerOver
-  return `${o}.${b}`
+  return b === 0 ? `${o}` : `${o}.${b}`
+}
+
+/** Match overs cap for labels (avoids stray `20.0` from floats). */
+export function oversLimitDisplay(oversLimit: number): string {
+  const n = Number(oversLimit)
+  if (!Number.isFinite(n)) return String(oversLimit)
+  const r = Math.round(n)
+  return Math.abs(n - r) < 1e-6 ? String(r) : String(n)
+}
+
+/** Innings progress vs cap, e.g. `2/20` or `4.3/20`. */
+export function oversProgressString(
+  legalBalls: number,
+  ballsPerOver: number,
+  oversLimit: number,
+): string {
+  return `${oversString(legalBalls, ballsPerOver)}/${oversLimitDisplay(oversLimit)}`
 }
 
 /**
  * Remaining bowler quota for UI, e.g. `2 overs left`, `1 over left`, `1.3 overs left` (cricket o.b notation).
  */
 export function oversQuotaRemainingLabel(legalBalls: number, ballsPerOver: number): string {
-  const s = oversString(legalBalls, ballsPerOver)
-  const dot = s.indexOf('.')
-  const whole = Number.parseInt(s.slice(0, dot), 10)
-  const ballsRem = Number.parseInt(s.slice(dot + 1), 10)
-  if (ballsRem === 0) {
-    if (whole === 1) return '1 over left'
-    return `${whole} overs left`
+  const o = Math.floor(legalBalls / ballsPerOver)
+  const b = legalBalls % ballsPerOver
+  if (b === 0) {
+    if (o === 1) return '1 over left'
+    return `${o} overs left`
   }
-  return `${s} overs left`
+  return `${o}.${b} overs left`
 }
 
 export function nextLegalBallIsNewOver(legalBallsAfter: number, ballsPerOver: number): boolean {

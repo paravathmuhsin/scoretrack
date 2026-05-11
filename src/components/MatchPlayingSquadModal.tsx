@@ -162,16 +162,21 @@ export function MatchPlayingSquadModal({
           </div>
         </div>
 
-        <div className="flex gap-3 border-t border-slate-100 p-4">
-          <Button type="button" variant="outline" className="h-11 flex-1 rounded-xl" onClick={onClose}>
-            Cancel
-          </Button>
+        <div className="flex flex-col gap-3 border-t border-slate-100 p-4 sm:flex-row">
           <Button
             type="button"
-            className="h-11 flex-1 rounded-xl font-semibold !text-primary-foreground"
+            className="order-1 h-11 w-full rounded-xl font-semibold !text-primary-foreground sm:order-2 sm:flex-1"
             onClick={() => onConfirm(draft)}
           >
             Done
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="order-2 h-11 w-full rounded-xl sm:order-1 sm:flex-1"
+            onClick={onClose}
+          >
+            Cancel
           </Button>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteField,
   doc,
   getDoc,
   onSnapshot,
@@ -7,6 +8,7 @@ import {
   query,
   serverTimestamp,
   updateDoc,
+  writeBatch,
 } from 'firebase/firestore'
 import {
   ArrowLeft,
@@ -45,6 +47,7 @@ import { SQUAD_SUMMARY_TILE_LIST_CLASS } from '@/lib/playingSquadTiles'
 import { cn } from '@/lib/utils'
 import { PlayerRoleMarkers } from '../components/PlayerRoleMarkers'
 import { BtnPendingLabel, Spinner } from '../components/Spinner'
+import { useMatchDetailsDocumentTitle } from '../hooks/useMatchDetailsDocumentTitle'
 import { usePendingWrites } from '../hooks/usePendingWrites'
 import {
   appendBallEvent,
@@ -58,10 +61,19 @@ import {
 } from '../lib/matchEvents'
 import { humanizeResultForMatch } from '../lib/humanizeResultText'
 import { matchCompleteHeadline, matchCompleteScoreLines } from '../lib/matchSummaryText'
-import { scoreLineForSide } from '../lib/scoreLineFormat'
+import { scoreLinePartsForSide } from '../lib/scoreLineFormat'
+import { computeMatchMvp } from '../lib/mvpMatch'
+import {
+  applyMatchCompletionStatsToBatch,
+  buildPlayerOfTheMatchResult,
+  fetchCareerRollupsForXi,
+  syncPotmChangeAfterComplete,
+} from '../lib/matchPlayerStatsPersistence'
+import { matchTeamShortLabel, teamAvatarLabel } from '../lib/teamAvatarLabel'
 import { advanceKnockoutFixture } from '../lib/advanceKnockoutFixture'
 import { recomputeTournament } from '../lib/recomputeTournament'
 import { getDb } from '../firebase/config'
+import { ensureMatchPublicId } from '../lib/ensureMatchPublicId'
 import { buildSnapshotFromUserTeam } from '../lib/userTeamSnapshot'
 import {
   battersYetToPlayIds,
@@ -297,6 +309,7 @@ export function ScoreMatchPage() {
   const [wicketModalMode, setWicketModalMode] = useState<'retire' | 'score' | null>(null)
   const [overthrowOpen, setOverthrowOpen] = useState(false)
   const [overthrowStr, setOverthrowStr] = useState('')
+  const [overthrowFieldError, setOverthrowFieldError] = useState<string | null>(null)
   const [endInningsOpen, setEndInningsOpen] = useState(false)
   const [endInningsReason, setEndInningsReason] = useState<'declared' | 'all_out'>('declared')
 
@@ -320,6 +333,11 @@ export function ScoreMatchPage() {
   >(null)
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false)
   const [overlayLinkModalOpen, setOverlayLinkModalOpen] = useState(false)
+  /** Until Firestore snapshot catches up after assigning `publicId`. */
+  const [optimisticOverlayPublicId, setOptimisticOverlayPublicId] = useState<string | null>(null)
+  const [overlayPublicIdBusy, setOverlayPublicIdBusy] = useState(false)
+  /** '' = automatic MVP pick; else XI player id (synced from match doc). */
+  const [potmDraft, setPotmDraft] = useState('')
 
   useEffect(() => {
     setStartMatchWizardStep(0)
@@ -340,9 +358,12 @@ export function ScoreMatchPage() {
     setGoLiveConfirmOpen(false)
     setEndMatchModalOpen(false)
     setOverlayLinkModalOpen(false)
+    setOptimisticOverlayPublicId(null)
+    setOverlayPublicIdBusy(false)
     setSettingsMenuOpen(false)
     setEndMatchReason('')
     setEndMatchModalError(null)
+    setPotmDraft('')
   }, [id])
 
   useEffect(() => {
@@ -369,6 +390,12 @@ export function ScoreMatchPage() {
       setEvents(out)
     })
   }, [id])
+
+  useEffect(() => {
+    setPotmDraft(match?.playerOfTheMatchPlayerId ?? '')
+  }, [match?.playerOfTheMatchPlayerId])
+
+  useMatchDetailsDocumentTitle(match)
 
   const cfg: ReplayConfig | null = useMemo(() => {
     if (!match?.lineup) return null
@@ -397,6 +424,39 @@ export function ScoreMatchPage() {
     if (!cfg) return null
     return bowlingStatsPerInnings(cfg, events)
   }, [cfg, events])
+
+  const mvpForPotm = useMemo(() => {
+    if (!match || !cfg || !state || !state.matchComplete || !state.innings2) return null
+    return computeMatchMvp(match, cfg, events, state)
+  }, [match, cfg, state, events])
+
+  const potmSelectOptions = useMemo(() => {
+    if (!match?.lineup) return []
+    const xi = match.lineup
+    const mvpTotal = (pid: string) => {
+      const row = mvpForPotm?.rows.find((r) => r.playerId === pid)
+      return row != null ? Number(row.total.toFixed(0)) : null
+    }
+    const labelWithMvp = (pid: string, teamShort: string) => {
+      const base = `${nameFor(match, pid)} (${teamShort})`
+      const pts = mvpTotal(pid)
+      return pts != null ? `${base} (${pts})` : base
+    }
+    const opts: { id: string; label: string }[] = []
+    for (const pid of xi.homeXI) {
+      opts.push({
+        id: pid,
+        label: labelWithMvp(pid, matchTeamShortLabel(match.home)),
+      })
+    }
+    for (const pid of xi.awayXI) {
+      opts.push({
+        id: pid,
+        label: labelWithMvp(pid, matchTeamShortLabel(match.away)),
+      })
+    }
+    return opts
+  }, [match, mvpForPotm])
 
   const inn1Done =
     state && cfg && !state.innings2 && isInningsOver(cfg, state.innings1, state) && match?.status === 'live'
@@ -645,9 +705,25 @@ export function ScoreMatchPage() {
       await run(() => appendOverthrow(id, runs))
       setOverthrowOpen(false)
       setOverthrowStr('')
+      setOverthrowFieldError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not add overthrow')
     }
+  }
+
+  function parseOverthrowRuns(value: string): number | null {
+    const trimmed = value.trim()
+    if (!trimmed) {
+      setOverthrowFieldError('Runs is required.')
+      return null
+    }
+    const runs = Number.parseInt(trimmed, 10)
+    if (Number.isNaN(runs) || runs < 1 || runs > 36) {
+      setOverthrowFieldError('Enter a valid number between 1 and 36.')
+      return null
+    }
+    setOverthrowFieldError(null)
+    return runs
   }
 
   async function sendDigit(runs: number) {
@@ -793,7 +869,12 @@ export function ScoreMatchPage() {
     const endReason = opts?.endReason?.trim()
     setError(null)
     await run(async () => {
-      await updateDoc(doc(getDb(), 'matches', id), {
+      const mvp = computeMatchMvp(match, cfg, events, state)
+      const potmResult = buildPlayerOfTheMatchResult(mvp)
+      const existingCareer = await fetchCareerRollupsForXi(getDb(), { ...match, id })
+      const batch = writeBatch(getDb())
+      const mref = doc(getDb(), 'matches', id)
+      batch.update(mref, {
         status: 'completed',
         completedAt: serverTimestamp(),
         resultSummary: {
@@ -801,7 +882,19 @@ export function ScoreMatchPage() {
           text,
           ...(endReason ? { endReason } : {}),
         },
+        ...(potmResult ? { playerOfTheMatchResult: potmResult } : {}),
       })
+      applyMatchCompletionStatsToBatch(
+        batch,
+        getDb(),
+        { ...match, id },
+        cfg,
+        state,
+        events,
+        potmResult,
+        existingCareer,
+      )
+      await batch.commit()
       if (match.tournamentId) {
         await recomputeTournament(match.tournamentId)
         await advanceKnockoutFixture(id)
@@ -841,7 +934,12 @@ export function ScoreMatchPage() {
             : po === 'home_win'
               ? `${match.home.name} won (dec)`
               : `${match.away.name} won (dec)`
-        await updateDoc(doc(getDb(), 'matches', id), {
+        const mvp = computeMatchMvp(match, cfg, events, state)
+        const potmResult = buildPlayerOfTheMatchResult(mvp)
+        const existingCareer = await fetchCareerRollupsForXi(getDb(), { ...match, id })
+        const batch = writeBatch(getDb())
+        const mref = doc(getDb(), 'matches', id)
+        batch.update(mref, {
           status: 'completed',
           completedAt: serverTimestamp(),
           resultSummary: {
@@ -850,7 +948,19 @@ export function ScoreMatchPage() {
             endReason,
             pointsOutcome: po,
           },
+          ...(potmResult ? { playerOfTheMatchResult: potmResult } : {}),
         })
+        applyMatchCompletionStatsToBatch(
+          batch,
+          getDb(),
+          { ...match, id },
+          cfg,
+          state,
+          events,
+          potmResult,
+          existingCareer,
+        )
+        await batch.commit()
       }
       if (match.tournamentId) {
         await recomputeTournament(match.tournamentId)
@@ -896,6 +1006,51 @@ export function ScoreMatchPage() {
     setEndMatchCompletedOutcome(null)
   }
 
+  async function savePlayerOfTheMatch() {
+    if (!id || !match || user?.uid !== match.createdBy || !cfg || !state) return
+    const next = potmDraft.trim()
+    const prev = (match.playerOfTheMatchPlayerId ?? '').trim()
+    const needsResultBackfill =
+      match.status === 'completed' && !match.playerOfTheMatchResult && computeMatchMvp(match, cfg, events, state).potm
+    if (next === prev && !needsResultBackfill) return
+    setError(null)
+    try {
+      await run(async () => {
+        const prevStoredPotmId = match.playerOfTheMatchResult?.playerId ?? null
+        const nextMatch: MatchDoc = {
+          ...match,
+          playerOfTheMatchPlayerId: next === '' ? undefined : next,
+        }
+        const potmResult = buildPlayerOfTheMatchResult(computeMatchMvp(nextMatch, cfg, events, state))
+        const idField =
+          next === '' ? { playerOfTheMatchPlayerId: deleteField() } : { playerOfTheMatchPlayerId: next }
+        const resultPatch =
+          match.status === 'completed'
+            ? potmResult
+              ? { playerOfTheMatchResult: potmResult }
+              : { playerOfTheMatchResult: deleteField() }
+            : {}
+        await updateDoc(doc(getDb(), 'matches', id), { ...idField, ...resultPatch })
+        if (match.status === 'completed') {
+          await syncPotmChangeAfterComplete(
+            getDb(),
+            { ...nextMatch, id },
+            cfg,
+            state,
+            events,
+            prevStoredPotmId,
+            potmResult,
+          )
+        }
+      })
+      toast.success(
+        next ? 'Player of the Match updated.' : 'Player of the Match set to automatic (MVP rules).',
+      )
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not save')
+    }
+  }
+
   useEffect(() => {
     if (!needsNextBowlerConfirm || !match || !cfg || !state) return
     const inn = currentInnings(state)
@@ -920,12 +1075,32 @@ export function ScoreMatchPage() {
     }
   }
 
+  async function openScoreOverlayLinkModal() {
+    if (!id || !match || user?.uid !== match.createdBy) return
+    setOverlayPublicIdBusy(true)
+    try {
+      const hadPublicId = Boolean(match.publicId?.trim())
+      const pid = await ensureMatchPublicId(doc(getDb(), 'matches', id), match.publicId, run)
+      if (!hadPublicId) {
+        setOptimisticOverlayPublicId(pid)
+        toast.success('Overlay link created')
+      }
+      setSettingsMenuOpen(false)
+      setOverlayLinkModalOpen(true)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not create overlay link')
+    } finally {
+      setOverlayPublicIdBusy(false)
+    }
+  }
+
+  const effectivePublicId = (optimisticOverlayPublicId ?? match?.publicId)?.trim() ?? ''
+
   const overlayPublicUrl = useMemo(() => {
-    const pid = match?.publicId
-    if (!pid) return ''
+    if (!effectivePublicId) return ''
     const origin = typeof window !== 'undefined' ? window.location.origin : ''
-    return `${origin}/overlay/${pid}`
-  }, [match?.publicId])
+    return `${origin}/overlay/${effectivePublicId}`
+  }, [effectivePublicId])
 
   if (!id) return <p>Missing id</p>
   if (!match) return <p>Loading…</p>
@@ -958,8 +1133,9 @@ export function ScoreMatchPage() {
         })
       : []
 
-  const homeScoreLine = state && cfg ? scoreLineForSide(state, cfg, 'home') : 'Yet to bat'
-  const awayScoreLine = state && cfg ? scoreLineForSide(state, cfg, 'away') : 'Yet to bat'
+  /** Live summary card: first batting team (innings 1) on top row */
+  const liveSummarySidesOrder: Side[] =
+    cfg && cfg.lineup.innings1BattingSide === 'away' ? ['away', 'home'] : ['home', 'away']
   const chaseSummary =
     state && cfg && state.innings2 && !state.matchComplete
       ? (() => {
@@ -1053,26 +1229,28 @@ export function ScoreMatchPage() {
                     </span>
                     <ChevronRight className="score-settings-item-chev" strokeWidth={2.4} aria-hidden />
                   </Link>
-                  {overlayPublicUrl && (
-                    <button
-                      type="button"
-                      className="score-settings-item"
-                      onClick={() => {
-                        setSettingsMenuOpen(false)
-                        setOverlayLinkModalOpen(true)
-                      }}
-                    >
-                      <span className="score-settings-item-icon" aria-hidden>
-                        <Monitor className="size-5" strokeWidth={2.1} />
+                  <button
+                    type="button"
+                    className="score-settings-item"
+                    disabled={overlayPublicIdBusy || writePending}
+                    onClick={() => void openScoreOverlayLinkModal()}
+                  >
+                    <span className="score-settings-item-icon" aria-hidden>
+                      <Monitor className="size-5" strokeWidth={2.1} />
+                    </span>
+                    <span className="score-settings-item-copy">
+                      <span className="score-settings-item-title">Score overlay link</span>
+                      <span className="score-settings-item-sub">
+                        {overlayPublicIdBusy
+                          ? 'Creating…'
+                          : effectivePublicId
+                            ? 'OBS / streaming browser source'
+                            : 'Generate shareable URL for OBS'}
                       </span>
-                      <span className="score-settings-item-copy">
-                        <span className="score-settings-item-title">Score overlay link</span>
-                        <span className="score-settings-item-sub">OBS / streaming browser source</span>
-                      </span>
-                      <ChevronRight className="score-settings-item-chev" strokeWidth={2.4} aria-hidden />
-                    </button>
-                  )}
-                  {id && overlayPublicUrl && (
+                    </span>
+                    <ChevronRight className="score-settings-item-chev" strokeWidth={2.4} aria-hidden />
+                  </button>
+                  {id && effectivePublicId && (
                     <Link
                       to={`/app/matches/${id}/overlay`}
                       className="score-settings-item"
@@ -1137,7 +1315,7 @@ export function ScoreMatchPage() {
             )}
           </div>
         )}
-      </div>
+        </div>
       )}
       {error && <p className="error">{error}</p>}
 
@@ -1234,15 +1412,6 @@ export function ScoreMatchPage() {
             </div>
           </div>
         </div>
-      )}
-
-      {match.status === 'live' && user?.uid === match.createdBy && !match.isPublic && (
-        <p className="card muted small" style={{ marginTop: '0.5rem' }}>
-          This match is <strong>private</strong>, so it will not appear on the public{' '}
-          <Link to="/">Public matches</Link> page. Turn on{' '}
-          <strong>Public score</strong> in{' '}
-          <Link to={`/app/matches/${id}/edit`}>Match settings</Link> to list it there.
-        </p>
       )}
 
       {match.status === 'scheduled' && (
@@ -1761,13 +1930,13 @@ export function ScoreMatchPage() {
                   setStartMatchWizardStep((s) => Math.max(0, s - 1))
                 }}
               >
-                Back
+                Cancel
               </button>
             )}
-            <p className="order-1 text-center text-xs text-slate-500 sm:order-2 sm:flex-1">
+            <p className="order-3 text-center text-xs text-slate-500 sm:order-2 sm:flex-1">
               Step {startMatchWizardStep + 1} of 4 — {START_MATCH_STEP_LABELS[startMatchWizardStep]}
             </p>
-            <div className="order-3 flex w-full justify-end sm:w-auto">
+            <div className="order-1 flex w-full justify-end sm:order-3 sm:w-auto">
               {startMatchWizardStep < 3 ? (
                 <button
                   type="button"
@@ -1925,23 +2094,23 @@ export function ScoreMatchPage() {
               </div>
             </div>
 
-            <div className="flex gap-3 border-t border-slate-100 p-4">
+            <div className="flex flex-col gap-3 border-t border-slate-100 p-4 sm:flex-row">
               <Button
                 type="button"
-                variant="outline"
-                className="h-11 flex-1 rounded-xl"
-                disabled={writePending}
-                onClick={() => setGoLiveConfirmOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                className="h-11 flex-1 rounded-xl font-semibold !text-primary-foreground"
+                className="order-1 h-11 w-full rounded-xl font-semibold !text-primary-foreground sm:order-2 sm:flex-1"
                 disabled={writePending}
                 onClick={() => void executeStartMatch()}
               >
                 <BtnPendingLabel pending={writePending} idle="Confirm & go live" busyText="Saving…" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="order-2 h-11 w-full rounded-xl sm:order-1 sm:flex-1"
+                disabled={writePending}
+                onClick={() => setGoLiveConfirmOpen(false)}
+              >
+                Cancel
               </Button>
             </div>
           </div>
@@ -2190,55 +2359,61 @@ export function ScoreMatchPage() {
               </p>
             )}
             <div className="score-live-summary-top">
-              <div
-                className={cn(
-                  'score-live-side score-live-side--home',
-                  state?.innings2 &&
-                    !state.matchComplete &&
-                    state.innings1.battingSide === 'home' &&
-                    'score-live-side--completed-innings',
-                )}
-              >
-                <span className="score-live-side-label">{match.home.name}</span>
-                <div className="score-live-side-main">
-                  <span className="score-live-side-avatar">
-                    {match.home.name
-                      .trim()
-                      .split(/\s+/)
-                      .slice(0, 2)
-                      .map((s) => s[0]?.toUpperCase() ?? '')
-                      .join('')}
-                  </span>
-                  <div className="score-live-side-score">
-                    {homeScoreLine}
+              {liveSummarySidesOrder.map((side) => {
+                const team = side === 'home' ? match.home : match.away
+                const scoreParts = scoreLinePartsForSide(state, cfg, side)
+                const avatarLabel = teamAvatarLabel(team)
+                const isResultLoser =
+                  match.status === 'completed' &&
+                  state.matchComplete &&
+                  state.winner != null &&
+                  state.winner !== 'tie' &&
+                  state.winner !== side
+                return (
+                  <div
+                    key={side}
+                    className={cn(
+                      'score-live-side',
+                      side === 'home' ? 'score-live-side--home' : 'score-live-side--away',
+                      state?.innings2 &&
+                        !state.matchComplete &&
+                        state.innings1.battingSide === side &&
+                        'score-live-side--completed-innings',
+                      isResultLoser && 'score-live-side--result-loser',
+                    )}
+                  >
+                    <div className="score-live-side-main">
+                      <span
+                        className={cn(
+                          'score-live-side-avatar',
+                          side === 'away' && 'score-live-side-avatar--away',
+                          avatarLabel.length > 2 && 'score-live-side-avatar--compact',
+                        )}
+                      >
+                        {avatarLabel}
+                      </span>
+                      <span className="score-live-side-label">{team.name}</span>
+                      <div className="score-live-side-score">
+                        {scoreParts.kind === 'yet' ? (
+                          scoreParts.text
+                        ) : (
+                          <>
+                            <span className="score-live-side-rw">
+                              {scoreParts.rw}
+                            </span>
+                            {scoreParts.overs ? (
+                              <>
+                                {' '}
+                                <span className="score-live-side-overs">{scoreParts.overs}</span>
+                              </>
+                            ) : null}
+                          </>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-              <div className="score-live-vs">VS</div>
-              <div
-                className={cn(
-                  'score-live-side score-live-side--away',
-                  state?.innings2 &&
-                    !state.matchComplete &&
-                    state.innings1.battingSide === 'away' &&
-                    'score-live-side--completed-innings',
-                )}
-              >
-                <span className="score-live-side-label">{match.away.name}</span>
-                <div className="score-live-side-main">
-                  <span className="score-live-side-avatar score-live-side-avatar--away">
-                    {match.away.name
-                      .trim()
-                      .split(/\s+/)
-                      .slice(0, 2)
-                      .map((s) => s[0]?.toUpperCase() ?? '')
-                      .join('')}
-                  </span>
-                  <div className="score-live-side-score">
-                    {awayScoreLine}
-                  </div>
-                </div>
-              </div>
+                )
+              })}
             </div>
             {!state.matchComplete && (
               <div className="score-live-crr">
@@ -2355,14 +2530,7 @@ export function ScoreMatchPage() {
                       return (
                         <tr key={bid}>
                           <td className="score-live-name">
-                            <div>
-                              {nameFor(match, bid)}
-                              <PlayerRoleMarkers
-                                match={match}
-                                side={opp(currentInnings(state).battingSide)}
-                                playerId={bid}
-                              />
-                            </div>
+                            <div>{nameFor(match, bid)}</div>
                           </td>
                           <td className="num muted">{bowlerOversDisplay(legalBalls, cfg.ballsPerOver)}</td>
                           <td className="num muted">0</td>
@@ -2677,7 +2845,6 @@ export function ScoreMatchPage() {
 
       {canScore && (
         <div className="card record-ball-card">
-          <h2>Record ball</h2>
           <div className="record-this-over">
             <span className="muted small record-this-over-label">This over:</span>
             <div className="record-this-over-pills">
@@ -2705,7 +2872,7 @@ export function ScoreMatchPage() {
                 Retire
               </button>
               <button type="button" className="btn" disabled={writePending} onClick={() => void sendSwapEndsEvent()}>
-                Swap batsman
+                Swap
               </button>
             </div>
             <div className="record-ball-main">
@@ -2799,6 +2966,7 @@ export function ScoreMatchPage() {
                   disabled={writePending}
                   onClick={() => {
                     setOverthrowStr('')
+                    setOverthrowFieldError(null)
                     setOverthrowOpen(true)
                   }}
                   aria-label="Add overthrow runs"
@@ -2813,45 +2981,105 @@ export function ScoreMatchPage() {
 
       {overthrowOpen && canScore && (
         <div
-          className="modal"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="overthrow-title"
-          onClick={() => setOverthrowOpen(false)}
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4"
+          role="presentation"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setOverthrowOpen(false)
+          }}
         >
-          <div className="card" style={{ maxWidth: '22rem', width: '100%' }} onClick={(e) => e.stopPropagation()}>
-            <h3 id="overthrow-title">Overthrow runs</h3>
-            <p className="muted small">Extra runs from overthrows on the same ball (added to the total, no extra delivery).</p>
-            <label>
-              Runs
-              <input
-                type="number"
-                inputMode="numeric"
-                min={1}
-                max={36}
-                value={overthrowStr}
-                onChange={(e) => setOverthrowStr(e.target.value)}
-                autoFocus
-              />
-            </label>
-            <div className="row" style={{ justifyContent: 'flex-end', flexWrap: 'wrap', gap: '0.5rem' }}>
-              <button type="button" className="btn ghost" onClick={() => setOverthrowOpen(false)}>
-                Cancel
-              </button>
+          <div
+            className="flex max-h-[min(90dvh,520px)] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="overthrow-title"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="relative shrink-0 border-b border-slate-100 px-5 pb-4 pt-5">
               <button
                 type="button"
-                className="btn primary"
+                className="absolute right-4 top-4 inline-flex size-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+                aria-label="Close"
                 disabled={writePending}
-                onClick={() => {
-                  void (async () => {
-                    const v = Number.parseInt(overthrowStr, 10)
-                    if (Number.isNaN(v) || v < 1) return
-                    await submitOverthrow(v)
-                  })()
-                }}
+                onClick={() => setOverthrowOpen(false)}
               >
-                <BtnPendingLabel pending={writePending} idle="OK" />
+                <X className="size-4" strokeWidth={2.2} />
               </button>
+              <div className="flex items-start gap-3 pr-10">
+                <div
+                  className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
+                  aria-hidden
+                >
+                  <Plus className="size-5" strokeWidth={2} />
+                </div>
+                <div className="min-w-0 leading-tight">
+                  <h2 id="overthrow-title" className="text-lg font-bold text-slate-900">
+                    Overthrow runs
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Extra runs from overthrows on the same ball (added to the total, no extra delivery).
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+              <div className="space-y-2">
+                <label htmlFor="overthrow-runs" className="text-sm font-semibold text-slate-900">
+                  Runs
+                </label>
+                <input
+                  id="overthrow-runs"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={36}
+                  value={overthrowStr}
+                  onChange={(e) => {
+                    setOverthrowStr(e.target.value)
+                    if (overthrowFieldError) setOverthrowFieldError(null)
+                  }}
+                  aria-invalid={Boolean(overthrowFieldError)}
+                  aria-describedby={overthrowFieldError ? 'overthrow-runs-error' : undefined}
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-none outline-none transition-[box-shadow,border-color] placeholder:text-slate-400 focus:border-primary/35 focus:shadow-[0_0_0_3px_rgba(229,9,20,0.12)]"
+                  autoFocus
+                />
+                {overthrowFieldError ? (
+                  <p id="overthrow-runs-error" className="text-sm text-red-600" role="alert">
+                    {overthrowFieldError}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="shrink-0 border-t border-slate-100 px-5 py-4">
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 rounded-xl px-4 text-sm font-semibold"
+                  disabled={writePending}
+                  onClick={() => {
+                    setOverthrowOpen(false)
+                    setOverthrowFieldError(null)
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  className="h-11 rounded-xl px-4 text-sm font-semibold !text-primary-foreground"
+                  disabled={writePending}
+                  onClick={() => {
+                    void (async () => {
+                      const v = parseOverthrowRuns(overthrowStr)
+                      if (!v) return
+                      await submitOverthrow(v)
+                    })()
+                  }}
+                >
+                  <BtnPendingLabel pending={writePending} idle="Save runs" />
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -3032,7 +3260,7 @@ export function ScoreMatchPage() {
                               : currentInnings(state).strikerId,
                           ).map((p) => (
                             <option key={p.playerId} value={p.playerId}>
-                              {p.name}
+                              {incomingBatterOptionLabel(match, state, p.playerId)}
                             </option>
                           ))}
                         </select>
@@ -3166,10 +3394,6 @@ export function ScoreMatchPage() {
               </div>
 
               <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
-                <p className="text-sm font-medium text-slate-700">
-                  {match.home.name} <span className="text-slate-400">vs</span> {match.away.name}
-                </p>
-
                 <div
                   className={cn(FOW_FORM_ROW, 'items-start')}
                   role="group"
@@ -3180,38 +3404,46 @@ export function ScoreMatchPage() {
                   </div>
                   {state && (
                     <div
-                      className={cn(FOW_FORM_CONTROL, 'flex flex-col gap-2')}
-                      role="radiogroup"
+                      className={cn(FOW_FORM_CONTROL, 'grid grid-cols-1 gap-2 sm:grid-cols-2')}
+                      role="group"
                       aria-labelledby="retire-hurt-who-label"
                     >
-                      <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 text-sm font-medium text-slate-900 has-[:checked]:border-primary has-[:checked]:bg-primary/[0.06] has-[:checked]:ring-1 has-[:checked]:ring-primary/20">
-                        <input
-                          type="radio"
-                          name="retire-who"
-                          className="size-4 shrink-0 accent-primary"
-                          checked={wDismiss === currentInnings(state).strikerId}
-                          onChange={() => {
-                            setWicketModalError(null)
-                            setWDismiss(currentInnings(state).strikerId)
-                          }}
-                          required
-                        />
-                        {nameFor(match, currentInnings(state).strikerId)} (striker)
-                      </label>
-                      <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 text-sm font-medium text-slate-900 has-[:checked]:border-primary has-[:checked]:bg-primary/[0.06] has-[:checked]:ring-1 has-[:checked]:ring-primary/20">
-                        <input
-                          type="radio"
-                          name="retire-who"
-                          className="size-4 shrink-0 accent-primary"
-                          checked={wDismiss === currentInnings(state).nonStrikerId}
-                          onChange={() => {
-                            setWicketModalError(null)
-                            setWDismiss(currentInnings(state).nonStrikerId)
-                          }}
-                          required
-                        />
-                        {nameFor(match, currentInnings(state).nonStrikerId)} (non-striker)
-                      </label>
+                      <button
+                        type="button"
+                        className={cn(
+                          'w-full rounded-xl border px-3 py-3 text-left text-sm font-medium text-slate-900 transition-[border-color,box-shadow,background-color]',
+                          wDismiss === currentInnings(state).strikerId
+                            ? 'border-primary bg-primary/[0.06] shadow-[0_0_0_1px_rgba(229,9,20,0.2)]'
+                            : 'border-slate-200 bg-slate-50/50 hover:border-slate-300 hover:bg-slate-50',
+                        )}
+                        aria-pressed={wDismiss === currentInnings(state).strikerId}
+                        onClick={() => {
+                          setWicketModalError(null)
+                          setWDismiss(currentInnings(state).strikerId)
+                        }}
+                      >
+                        <span className="block leading-snug">{nameFor(match, currentInnings(state).strikerId)}</span>
+                        <span className="mt-0.5 block text-xs font-semibold text-slate-500">Striker</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={cn(
+                          'w-full rounded-xl border px-3 py-3 text-left text-sm font-medium text-slate-900 transition-[border-color,box-shadow,background-color]',
+                          wDismiss === currentInnings(state).nonStrikerId
+                            ? 'border-primary bg-primary/[0.06] shadow-[0_0_0_1px_rgba(229,9,20,0.2)]'
+                            : 'border-slate-200 bg-slate-50/50 hover:border-slate-300 hover:bg-slate-50',
+                        )}
+                        aria-pressed={wDismiss === currentInnings(state).nonStrikerId}
+                        onClick={() => {
+                          setWicketModalError(null)
+                          setWDismiss(currentInnings(state).nonStrikerId)
+                        }}
+                      >
+                        <span className="block leading-snug">
+                          {nameFor(match, currentInnings(state).nonStrikerId)}
+                        </span>
+                        <span className="mt-0.5 block text-xs font-semibold text-slate-500">Non-striker</span>
+                      </button>
                     </div>
                   )}
                 </div>
@@ -3235,7 +3467,7 @@ export function ScoreMatchPage() {
                         <option value="">Select replacement</option>
                         {replacementBattersForRetirement(match, state, wDismiss).map((p) => (
                           <option key={p.playerId} value={p.playerId}>
-                            {p.name}
+                            {incomingBatterOptionLabel(match, state, p.playerId)}
                           </option>
                         ))}
                       </select>
@@ -3326,6 +3558,68 @@ export function ScoreMatchPage() {
           )}
         </div>
       )}
+
+      {state?.matchComplete &&
+        state.innings2 &&
+        match.lineup &&
+        mvpForPotm?.potm &&
+        match.status !== 'scheduled' && (
+          <div className="card" style={{ marginTop: '0.75rem' }}>
+            <div className="flex items-start gap-2">
+              <Trophy className="mt-0.5 size-5 shrink-0 text-amber-600" strokeWidth={2} aria-hidden />
+              <div className="min-w-0 flex-1">
+                <h2 className="text-sm font-semibold text-slate-900">Player of the Match</h2>
+                <p className="mt-1 text-base text-slate-800">
+                  <span className="font-semibold">{mvpForPotm.potm.name}</span>
+                  <span className="text-slate-500"> · </span>
+                  <span className="text-slate-600">
+                    {mvpForPotm.potm.side === 'home'
+                      ? matchTeamShortLabel(match.home)
+                      : matchTeamShortLabel(match.away)}
+                  </span>
+                </p>
+                {mvpForPotm.potmNote ? (
+                  <p className="muted small mt-1">{mvpForPotm.potmNote}</p>
+                ) : null}
+                {match.playerOfTheMatchPlayerId?.trim() ? (
+                  <p className="muted small mt-1">Manually selected — shown on the public scorecard and PDF.</p>
+                ) : null}
+                {user?.uid === match.createdBy && match.status !== 'abandoned' && (
+                  <div className="mt-4 border-t border-slate-100 pt-4">
+                    <label htmlFor="score-potm-select" className="text-xs font-medium text-slate-600">
+                      Change Player of the Match
+                    </label>
+                    <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end">
+                      <select
+                        id="score-potm-select"
+                        className={cn(matchFormSelectClass, 'min-h-11 min-w-0 flex-1 sm:max-w-md')}
+                        value={potmDraft}
+                        onChange={(e) => setPotmDraft(e.target.value)}
+                      >
+                        <option value="">Automatic (MVP rules)</option>
+                        {potmSelectOptions.map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        type="button"
+                        className="h-11 shrink-0 rounded-xl font-semibold"
+                        disabled={
+                          writePending || (potmDraft.trim() || '') === (match.playerOfTheMatchPlayerId ?? '').trim()
+                        }
+                        onClick={() => void savePlayerOfTheMatch()}
+                      >
+                        <BtnPendingLabel pending={writePending} idle="Save" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
       {inningsBreakPopup && (
         <div
@@ -3590,7 +3884,7 @@ function bowlerEconomy(runs: number, legalBalls: number, ballsPerOver: number): 
 
 function srRuns(runs: number, balls: number): string {
   if (balls <= 0) return '—'
-  return String(Math.round((runs / balls) * 100))
+  return ((runs / balls) * 100).toFixed(2)
 }
 
 /** Batters at the crease, in XI order (striker is indicated with * only, not by row order). */
@@ -3676,7 +3970,7 @@ function buildRunsAllocation(
 function scoreBallPillClass(sym: string): string {
   const base = 'public-live-ball'
   if (sym.startsWith('+')) return `${base} ${base}--extra`
-  if (sym === 'W' || sym === 'w') return `${base} ${base}--wicket`
+  if (sym === 'W' || sym === 'w' || /^\d+W$/i.test(sym)) return `${base} ${base}--wicket`
   if (sym.startsWith('Wd') && sym.endsWith('W')) return `${base} ${base}--wicket`
   if (sym.startsWith('Nb') && sym.includes('W')) return `${base} ${base}--wicket`
   if (sym === 'Rh') return `${base} ${base}--retired-hurt`
@@ -3699,6 +3993,12 @@ function nameFor(match: MatchDoc, pid: string) {
     match.away.players.find((p) => p.playerId === pid)?.name ??
     pid
   )
+}
+
+/** Label in Fall of wicket / replacement selects; retired hurt returnees show `(rtd)`. */
+function incomingBatterOptionLabel(match: MatchDoc, state: ReplayState, playerId: string): string {
+  const base = nameFor(match, playerId)
+  return currentInnings(state).retiredOffField.has(playerId) ? `${base} (rtd)` : base
 }
 
 function xiPlayers(match: MatchDoc, side: Side) {

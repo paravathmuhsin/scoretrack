@@ -42,7 +42,11 @@ export function TournamentMvpTab({ tournamentId, tournament, teamLabel, publicLi
             <th>Runs</th>
             <th>Wkts</th>
             <th>Team</th>
-            <th>Field</th>
+            <th>Ct</th>
+            <th>RO</th>
+            <th>St</th>
+            <th>Fld</th>
+            <th>POTM</th>
             <th>MVP</th>
           </tr>
         </thead>
@@ -54,7 +58,11 @@ export function TournamentMvpTab({ tournamentId, tournament, teamLabel, publicLi
               <td>{p.runs}</td>
               <td>{p.wickets}</td>
               <td className="muted small">{tlab(p.teamId)}</td>
+              <td>{p.catches ?? 0}</td>
+              <td>{p.runOuts ?? 0}</td>
+              <td>{p.stumpings ?? 0}</td>
               <td>{p.fieldingDismissals}</td>
+              <td>{p.potmAwards ?? 0}</td>
               <td>
                 <strong>{p.mvpScore}</strong>
               </td>
@@ -69,7 +77,8 @@ export function TournamentMvpTab({ tournamentId, tournament, teamLabel, publicLi
     <div className={cn(publicListing && 'tournament-stat-tab tournament-stat-tab--public tournament-mvp-tab')}>
       {publicListing ? null : <h2 className="tabs-panel-heading">MVP</h2>}
       <p className={publicListing ? 'tournament-stat-intro' : 'muted small'}>
-        MVP score = runs + 20×wickets + 10×fielding assists (same weighting as recompute). Run <strong>Recompute</strong> after matches complete.
+        Tournament MVP sums the per-match fantasy formula (batting, bowling, fielding, impact bonuses).
+        Run <strong>Recompute</strong> after matches complete.
       </p>
       {!rows.length ? (
         <p className={cn('muted', publicListing && 'tournament-stat-empty')}>No data yet.</p>

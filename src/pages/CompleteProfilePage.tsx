@@ -1,11 +1,11 @@
 import { doc, getDoc } from 'firebase/firestore'
 import { Mail, Phone, UserRound } from 'lucide-react'
 import { type FormEvent, useEffect, useState, type Dispatch, type SetStateAction } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
 import { getDb } from '../firebase/config'
 import { BtnPendingLabel } from '../components/Spinner'
-import { isProfileComplete, MIN_PROFILE_NAME_LEN } from '../lib/profileComplete'
+import { isProfileComplete, MAX_DISPLAY_NAME_LEN, MIN_PROFILE_NAME_LEN } from '../lib/profileComplete'
 import {
   MOBILE_TEN_DIGIT_MSG,
   normalizePhoneDigits,
@@ -15,8 +15,9 @@ import type { UserProfileDoc } from '../types/models'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
+import { safePostAuthPath } from '../lib/safeRedirect'
 
-type ProfileFieldKey = 'displayName' | 'email' | 'mobile'
+type ProfileFieldKey = 'fullName' | 'displayName' | 'email' | 'mobile'
 type FieldErrors = Partial<Record<ProfileFieldKey, string>>
 
 function clearFieldError(set: Dispatch<SetStateAction<FieldErrors>>, key: ProfileFieldKey) {
@@ -31,6 +32,9 @@ function clearFieldError(set: Dispatch<SetStateAction<FieldErrors>>, key: Profil
 export function CompleteProfilePage() {
   const { user, updateProfileContact, logout } = useAuth()
   const nav = useNavigate()
+  const [searchParams] = useSearchParams()
+  const redirectAfterComplete = safePostAuthPath(searchParams.get('redirect'))
+  const [fullName, setFullName] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [mobile, setMobile] = useState('')
   const [loading, setLoading] = useState(true)
@@ -48,13 +52,15 @@ export function CompleteProfilePage() {
         if (cancelled) return
         const p = snap.exists() ? (snap.data() as UserProfileDoc) : null
           if (p && isProfileComplete(p, user)) {
-            nav('/', { replace: true })
+            nav(redirectAfterComplete, { replace: true })
             return
           }
+        setFullName(p?.fullName?.trim() || '')
         setDisplayName(p?.displayName?.trim() || user.displayName?.trim() || '')
         const m = p?.mobile?.trim() ?? ''
         setMobile(m ? parseToTenDigitMobile(m) ?? normalizePhoneDigits(m) : '')
       } catch {
+        setFullName('')
         setDisplayName(user.displayName?.trim() ?? '')
         setMobile('')
       } finally {
@@ -64,15 +70,24 @@ export function CompleteProfilePage() {
     return () => {
       cancelled = true
     }
-  }, [user, nav])
+  }, [user, nav, redirectAfterComplete])
 
   function validateFields(): boolean {
     const next: FieldErrors = {}
+    const fn = fullName.trim()
+    if (!fn) {
+      next.fullName = 'Full name is required.'
+    } else if (fn.length < MIN_PROFILE_NAME_LEN) {
+      next.fullName = `Full name must be at least ${MIN_PROFILE_NAME_LEN} characters.`
+    }
+
     const name = displayName.trim()
     if (!name) {
       next.displayName = 'Display name is required.'
     } else if (name.length < MIN_PROFILE_NAME_LEN) {
       next.displayName = `Display name must be at least ${MIN_PROFILE_NAME_LEN} characters.`
+    } else if (name.length > MAX_DISPLAY_NAME_LEN) {
+      next.displayName = `Display name must be at most ${MAX_DISPLAY_NAME_LEN} characters.`
     }
 
     const email = user?.email?.trim()
@@ -102,8 +117,8 @@ export function CompleteProfilePage() {
     const normMobile = parseToTenDigitMobile(mobile.trim())!
     setSaving(true)
     try {
-      await updateProfileContact({ displayName: name, mobile: normMobile })
-      nav('/', { replace: true })
+      await updateProfileContact({ fullName: fullName.trim(), displayName: name, mobile: normMobile })
+      nav(redirectAfterComplete, { replace: true })
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Could not save')
     } finally {
@@ -150,8 +165,35 @@ export function CompleteProfilePage() {
         className="space-y-5 rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_2px_16px_rgba(15,23,42,0.06)] sm:p-6"
       >
         <div className="space-y-2">
+          <label htmlFor="complete-profile-full-name" className="block text-sm font-semibold text-slate-900">
+            Full name
+          </label>
+          <div className={cn(fieldShell, fieldErrors.fullName && fieldShellError)}>
+            <UserRound className="size-4 shrink-0 text-primary" strokeWidth={2} aria-hidden />
+            <Input
+              id="complete-profile-full-name"
+              value={fullName}
+              onChange={(e) => {
+                setFullName(e.target.value)
+                clearFieldError(setFieldErrors, 'fullName')
+              }}
+              autoComplete="name"
+              placeholder="Enter your full name"
+              aria-invalid={Boolean(fieldErrors.fullName)}
+              aria-describedby={fieldErrors.fullName ? 'complete-profile-full-name-error' : undefined}
+              className={innerInput}
+            />
+          </div>
+          {fieldErrors.fullName ? (
+            <p id="complete-profile-full-name-error" className="text-sm text-red-600" role="alert">
+              {fieldErrors.fullName}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="space-y-2">
           <label htmlFor="complete-profile-display-name" className="block text-sm font-semibold text-slate-900">
-            Display name
+            Display name <span className="font-normal text-slate-500">(max {MAX_DISPLAY_NAME_LEN} characters)</span>
           </label>
           <div className={cn(fieldShell, fieldErrors.displayName && fieldShellError)}>
             <UserRound className="size-4 shrink-0 text-primary" strokeWidth={2} aria-hidden />
@@ -159,13 +201,16 @@ export function CompleteProfilePage() {
               id="complete-profile-display-name"
               value={displayName}
               onChange={(e) => {
-                setDisplayName(e.target.value)
+                setDisplayName(e.target.value.slice(0, MAX_DISPLAY_NAME_LEN))
                 clearFieldError(setFieldErrors, 'displayName')
               }}
-              autoComplete="name"
-              placeholder="Enter display name"
+              autoComplete="nickname"
+              maxLength={MAX_DISPLAY_NAME_LEN}
+              placeholder="Short name shown in the app"
               aria-invalid={Boolean(fieldErrors.displayName)}
-              aria-describedby={fieldErrors.displayName ? 'complete-profile-display-name-error' : undefined}
+              aria-describedby={
+                fieldErrors.displayName ? 'complete-profile-display-name-error' : 'complete-profile-display-name-hint'
+              }
               className={innerInput}
             />
           </div>
@@ -173,7 +218,11 @@ export function CompleteProfilePage() {
             <p id="complete-profile-display-name-error" className="text-sm text-red-600" role="alert">
               {fieldErrors.displayName}
             </p>
-          ) : null}
+          ) : (
+            <p id="complete-profile-display-name-hint" className="text-xs leading-snug text-slate-500">
+              Used in squads and directory search.
+            </p>
+          )}
         </div>
 
         <div className="space-y-2">

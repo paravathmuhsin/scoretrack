@@ -74,11 +74,75 @@ service cloud.firestore {
       return exists(/databases/$(database)/documents/users/$(uid)/teams/$(teamId));
     }
 
+    function userTeamJoinInviteData(token) {
+      return get(/databases/$(database)/documents/userTeamJoinInvites/$(token)).data;
+    }
+
+    /** Signed-in player may merge only profile mirror fields onto `playerCareerStats/{pid}` (doc id must match uid). */
+    function careerSelfProfileWrite(pid) {
+      return request.auth.uid == pid
+        && string(request.resource.data.playerId) == string(pid)
+        && (
+          (
+            !exists(/databases/$(database)/documents/playerCareerStats/$(pid))
+            && request.resource.data.keys().hasOnly(['playerId', 'profileFullName', 'profileDisplayName', 'updatedAt'])
+          )
+          || (
+            exists(/databases/$(database)/documents/playerCareerStats/$(pid))
+            && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['profileFullName', 'profileDisplayName', 'updatedAt', 'playerId'])
+          )
+        );
+    }
+
+    /** Shareable join links under `userTeamJoinInvites/{token}` (token stored on `TeamDoc.joinInviteToken`). */
+    match /userTeamJoinInvites/{token} {
+      allow read: if authed();
+      allow create: if authed()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.teamId is string
+        && request.resource.data.teamName is string
+        && request.resource.data.memberIds is list
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid)/teams/$(request.resource.data.teamId))
+        && request.resource.data.createdAt is timestamp;
+      allow update, delete: if authed() && resource.data.ownerUid == request.auth.uid;
+    }
+
     match /users/{uid} {
       allow read, write: if authed() && request.auth.uid == uid;
 
       match /teams/{teamId} {
-        allow read, write: if authed() && request.auth.uid == uid;
+        allow list: if authed() && request.auth.uid == uid;
+
+        allow get: if authed() && request.auth.uid == uid
+          || (
+            authed()
+            && resource.data.keys().hasAny(['joinInviteToken'])
+            && resource.data.joinInviteToken is string
+            && exists(/databases/$(database)/documents/userTeamJoinInvites/$(resource.data.joinInviteToken))
+            && userTeamJoinInviteData(resource.data.joinInviteToken).ownerUid == uid
+            && userTeamJoinInviteData(resource.data.joinInviteToken).teamId == teamId
+          );
+
+        allow create, delete: if authed() && request.auth.uid == uid;
+
+        allow update: if authed() && request.auth.uid == uid
+          || (
+            authed()
+            && request.auth.uid != uid
+            && resource.data.keys().hasAny(['joinInviteToken'])
+            && resource.data.joinInviteToken is string
+            && exists(/databases/$(database)/documents/userTeamJoinInvites/$(resource.data.joinInviteToken))
+            && userTeamJoinInviteData(resource.data.joinInviteToken).ownerUid == uid
+            && userTeamJoinInviteData(resource.data.joinInviteToken).teamId == teamId
+            && request.resource.data.joinInviteToken == resource.data.joinInviteToken
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players'])
+            && request.resource.data.players.size() == resource.data.players.size() + 1
+            && request.resource.data.players.size() <= 40
+            && request.resource.data.players[resource.data.players.size()].playerId == request.auth.uid
+            && request.resource.data.players[resource.data.players.size()].name is string
+            && request.resource.data.players[resource.data.players.size()].name.size() > 0
+          );
       }
     }
 
@@ -165,6 +229,35 @@ service cloud.firestore {
         allow update: if false;
         allow delete: if matchCreator(mid) || tournamentOrganiserForMatch(mid);
       }
+
+      match /playerStats/{pid} {
+        allow read: if canAccessMatchSubcollection(mid) || tournamentOrganiserForMatch(mid);
+        allow create, update, delete: if matchCreator(mid);
+      }
+    }
+
+    /**
+     * Cross-match rollups (all completed XIs). Readable without auth so `/player/:uid` works when logged out
+     * (mirrored names + aggregates are intended as shareable).
+     */
+    match /playerCareerStats/{pid} {
+      allow read: if true;
+      allow create, update: if authed() && (
+        careerSelfProfileWrite(pid)
+        || (
+          request.resource.data.keys().hasAny(['sourceMatchId'])
+          && request.resource.data.sourceMatchId is string
+          && exists(/databases/$(database)/documents/matches/$(request.resource.data.sourceMatchId))
+          && matchData(request.resource.data.sourceMatchId).createdBy == request.auth.uid
+        )
+        || (
+          request.resource.data.keys().hasAny(['sourceTournamentId'])
+          && request.resource.data.sourceTournamentId is string
+          && tournamentExists(request.resource.data.sourceTournamentId)
+          && tournamentDoc(request.resource.data.sourceTournamentId).data.createdBy == request.auth.uid
+        )
+      );
+      allow delete: if false;
     }
   }
 }
