@@ -51,6 +51,7 @@ async function createScheduledMatch(
     oversLimit: DEFAULT_OVERS,
     oversPerBowler: DEFAULT_OVERS_PER_BOWLER,
     ballsPerOver: 6,
+    freeHitOnNoBall: false,
     scheduledAt: Timestamp.fromDate(args.scheduledAt),
     status: 'scheduled',
     createdBy: args.organiserUid,

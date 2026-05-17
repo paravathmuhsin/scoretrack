@@ -19,7 +19,6 @@ export function formatTournamentDate(ts: Timestamp | undefined): string {
   if (!ts || typeof ts.toDate !== 'function') return '—'
   return ts.toDate().toLocaleDateString(undefined, {
     weekday: 'short',
-    year: 'numeric',
     month: 'short',
     day: 'numeric',
   })

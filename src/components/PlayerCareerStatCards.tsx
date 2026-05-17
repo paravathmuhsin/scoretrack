@@ -46,6 +46,11 @@ function bestBowlingDisplay(c: Partial<PlayerCareerStatsDoc> | null | undefined)
   return '—'
 }
 
+function captainWinPct(wins: number, mat: number): string {
+  if (mat <= 0) return '—'
+  return fmt2((wins / mat) * 100)
+}
+
 function highScoreDisplay(c: Partial<PlayerCareerStatsDoc> | null | undefined, battingInnings: number): string {
   const hs = c?.highScore
   if (typeof hs === 'number') {
@@ -96,6 +101,12 @@ export function PlayerCareerStatCards({
   const catches = n(career, 'fieldingCatches')
   const stumpings = n(career, 'fieldingStumpings')
   const runOuts = n(career, 'fieldingRunOuts')
+
+  const capMat = n(career, 'captainMatches')
+  const capW = n(career, 'captainWins')
+  const capL = n(career, 'captainLosses')
+  const capT = n(career, 'captainTies')
+  const capPct = captainWinPct(capW, capMat)
 
   const wrap = layout === 'public' ? 'public-live-tab-panel space-y-6' : 'space-y-4'
   const card =
@@ -219,6 +230,34 @@ export function PlayerCareerStatCards({
           </div>
         </section>
 
+        {capMat > 0 ? (
+          <section className={appCard}>
+            <h2 className={appTitle}>Captaincy</h2>
+            <div className={appTableScroll}>
+              <table className={appStatTable}>
+                <thead>
+                  <tr>
+                    <th>Mat</th>
+                    <th>Won</th>
+                    <th>Lost</th>
+                    <th>Tied</th>
+                    <th>Win %</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>{capMat}</td>
+                    <td>{capW}</td>
+                    <td>{capL}</td>
+                    <td>{capT}</td>
+                    <td>{capPct}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ) : null}
+
         <section className={appCard}>
           <h2 className={appTitle}>Achievements</h2>
           <div className="mt-4 divide-y divide-slate-100">
@@ -254,9 +293,45 @@ export function PlayerCareerStatCards({
               <td>Player of the Tournament awards</td>
               <td className={tdNum}>{n(career, 'pottAwards')}</td>
             </tr>
+            {capMat > 0 ? (
+              <tr>
+                <td>Captaincy record</td>
+                <td className={tdNum}>
+                  {capW}-{capL}-{capT} <span className="text-slate-500">({capMat} as captain)</span>
+                </td>
+              </tr>
+            ) : null}
           </tbody>
         </table>
       </section>
+
+      {capMat > 0 ? (
+        <section className={card}>
+          <h2 className={title}>Captaincy</h2>
+          <div className={scroll}>
+            <table className={table}>
+              <thead>
+                <tr>
+                  <th>Mat</th>
+                  <th>Won</th>
+                  <th>Lost</th>
+                  <th>Tied</th>
+                  <th>Win %</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className={tdNum}>{capMat}</td>
+                  <td className={tdNum}>{capW}</td>
+                  <td className={tdNum}>{capL}</td>
+                  <td className={tdNum}>{capT}</td>
+                  <td className={tdNum}>{capPct}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
 
       <section className={card}>
         <h2 className={title}>Batting</h2>

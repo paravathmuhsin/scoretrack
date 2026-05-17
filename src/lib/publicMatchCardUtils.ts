@@ -1,5 +1,7 @@
 import type { Timestamp } from 'firebase/firestore'
+import { humanizeResultForMatch } from './humanizeResultText'
 import { currentInnings, isInningsOver, opp, type ReplayConfig, type ReplayState } from '../scoring/engine'
+import type { MatchDoc } from '../types/models'
 
 export function teamAbbrevFromName(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
@@ -37,6 +39,37 @@ export function buildListingLiveFooter(
   const chaser = opp(i1.battingSide)
   const chaserShort = teamAbbrevFromName(chaser === 'home' ? homeName : awayName)
   return `${chaserShort} need ${chase} runs to win`
+}
+
+/**
+ * One-line match status for tournament listing cards: chase (2nd innings live only) or final result.
+ */
+export function buildTournamentMatchStatsLine(
+  match: Pick<MatchDoc, 'status' | 'home' | 'away' | 'resultSummary'>,
+  cfg: ReplayConfig,
+  state: ReplayState,
+): string | null {
+  if (state.matchComplete || match.status === 'completed' || match.status === 'abandoned') {
+    const raw = (state.resultText ?? match.resultSummary?.text ?? '').trim()
+    if (!raw) return null
+    return humanizeResultForMatch(raw, match as MatchDoc)
+  }
+
+  if (match.status !== 'live' || state.matchComplete) return null
+
+  const liveInn = currentInnings(state)
+  if (liveInn.innings !== 2) return null
+
+  const target = state.innings1.runs + 1
+  const runsReq = Math.max(0, target - liveInn.runs)
+  const cap = cfg.oversLimit * cfg.ballsPerOver
+  const ballsLeft = Math.max(0, cap - liveInn.legalBalls)
+  const bat = (liveInn.battingSide === 'home' ? match.home.name : match.away.name).trim()
+  if (runsReq === 0) return `${bat} wins`
+  if (ballsLeft > 0) {
+    return `${bat} need ${runsReq} ${runsReq === 1 ? 'run' : 'runs'} from ${ballsLeft} ${ballsLeft === 1 ? 'ball' : 'balls'}`
+  }
+  return `${bat} need ${runsReq} ${runsReq === 1 ? 'run' : 'runs'}`
 }
 
 export function formatMatchListingSchedule(ts: Timestamp | undefined): { dayLine: string; timeLine: string } {

@@ -16,15 +16,15 @@ import {
   ArrowLeft,
   CalendarDays,
   FileText,
-  Flag,
   MapPin,
   Pencil,
   Settings2,
   SlidersHorizontal,
   Timer,
+  Trash2,
   Users,
 } from 'lucide-react'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
 import { PublicTournamentMatchScoreLines } from '../components/PublicTournamentMatchScoreLines'
@@ -34,7 +34,11 @@ import {
   publicTournamentMatchHeadMeta,
   publicTournamentMatchKicker,
 } from '../components/tournament/tournamentPublicDisplay'
+import { DeleteTournamentDialog } from '../components/tournament/DeleteTournamentDialog'
+import { EndTournamentDialog } from '../components/tournament/EndTournamentDialog'
+import { TournamentAddSquadDialogContent } from '../components/tournament/TournamentAddSquadDialogContent'
 import { TournamentGroupsTab } from '../components/tournament/TournamentGroupsTab'
+import { TournamentOutcomeOverviewCard } from '../components/tournament/TournamentOutcomeOverviewCard'
 import { TournamentLeaderboardTab } from '../components/tournament/TournamentLeaderboardTab'
 import { TournamentMvpTab } from '../components/tournament/TournamentMvpTab'
 import { TournamentPointsPanel } from '../components/TournamentPointsPanel'
@@ -52,6 +56,16 @@ import { getDb } from '../firebase/config'
 import { deleteTournamentCascade } from '../lib/deleteTournamentCascade'
 import { incrementPottForPlayer } from '../lib/matchPlayerStatsPersistence'
 import { compareMatchesOperationalOrder } from '../lib/matchListSort'
+import { tournTeamCardAvatarLabel } from '../lib/teamAvatarLabel'
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type {
@@ -98,13 +112,6 @@ function AppTournamentBackLink() {
   )
 }
 
-function teamInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (parts.length >= 2) return (parts[0]![0]! + parts[1]![0]!).toUpperCase()
-  const s = parts[0] ?? '?'
-  return s.slice(0, 2).toUpperCase()
-}
-
 /** Stable hue for avatar background from team name */
 function teamAvatarHue(name: string): number {
   let h = 0
@@ -133,10 +140,14 @@ export function TournamentDetailPage() {
   const [myTeams, setMyTeams] = useState<(TeamDoc & { id: string })[]>([])
   const [linkedTeams, setLinkedTeams] = useState<(TournamentLinkedTeamDoc & { id: string })[]>([])
   const [tournamentGroups, setTournamentGroups] = useState<(TournamentGroupDoc & { id: string })[]>([])
+  const [linkedTeamToRemove, setLinkedTeamToRemove] = useState<{ id: string; label: string } | null>(null)
   const [addTeamSearch, setAddTeamSearch] = useState('')
+  const [linkingSquadId, setLinkingSquadId] = useState<string | null>(null)
+  const addTeamDialogTitleId = useId()
   const addTeamDialogRef = useRef<HTMLDialogElement>(null)
-  const deleteTournamentDialogRef = useRef<HTMLDialogElement>(null)
-  const endTournamentDialogRef = useRef<HTMLDialogElement>(null)
+  const addTeamSearchInputRef = useRef<HTMLInputElement>(null)
+  const [deleteTournamentOpen, setDeleteTournamentOpen] = useState(false)
+  const [endTournamentOpen, setEndTournamentOpen] = useState(false)
   const [endTournamentWinnerId, setEndTournamentWinnerId] = useState('')
   const [endTournamentRunnerId, setEndTournamentRunnerId] = useState('')
   const [endTournamentPotKey, setEndTournamentPotKey] = useState('')
@@ -368,6 +379,11 @@ export function TournamentDetailPage() {
     return linkableTeams.filter((s) => s.name.toLowerCase().includes(q))
   }, [linkableTeams, addTeamSearch])
 
+  const teamSlotsRemaining = useMemo(() => {
+    if (!t || t.teamCount == null) return null
+    return Math.max(0, t.teamCount - linkedTeams.length)
+  }, [t, linkedTeams.length])
+
   const deleteDialogMatchBullet = useMemo(() => {
     if (linkedMatchCount === null) {
       return 'All matches linked to this tournament, including ball-by-ball events and innings'
@@ -391,8 +407,8 @@ export function TournamentDetailPage() {
       setDetailsError('End date must be on or after the start date.')
       return
     }
-    if (editDefaultSquadSize < 2 || editDefaultSquadSize > 30) {
-      setDetailsError('Players per team must be between 2 and 30.')
+    if (editDefaultSquadSize < 2 || editDefaultSquadSize > 15) {
+      setDetailsError('Players per team must be between 2 and 15.')
       return
     }
     if (editDefaultOversLimit < 1 || editDefaultOversLimit > 400) {
@@ -425,11 +441,11 @@ export function TournamentDetailPage() {
 
   function openDeleteTournamentDialog() {
     setError(null)
-    deleteTournamentDialogRef.current?.showModal()
+    setDeleteTournamentOpen(true)
   }
 
   function closeDeleteTournamentDialog() {
-    deleteTournamentDialogRef.current?.close()
+    setDeleteTournamentOpen(false)
     setError(null)
   }
 
@@ -470,11 +486,11 @@ export function TournamentDetailPage() {
     } catch {
       setStatsPlayersForPot([])
     }
-    queueMicrotask(() => endTournamentDialogRef.current?.showModal())
+    setEndTournamentOpen(true)
   }
 
   function closeEndTournamentDialog() {
-    endTournamentDialogRef.current?.close()
+    setEndTournamentOpen(false)
     setEndTournamentError(null)
   }
 
@@ -537,11 +553,13 @@ export function TournamentDetailPage() {
     setAddTeamSearch('')
     setError(null)
     addTeamDialogRef.current?.showModal()
+    queueMicrotask(() => addTeamSearchInputRef.current?.focus())
   }
 
   function closeAddTeamModal() {
     addTeamDialogRef.current?.close()
     setAddTeamSearch('')
+    setLinkingSquadId(null)
   }
 
   async function linkSquad(userTeamId: string) {
@@ -559,25 +577,36 @@ export function TournamentDetailPage() {
       )
       return
     }
+    setLinkingSquadId(userTeamId)
     try {
       await run(() =>
         addDoc(collection(getDb(), 'tournaments', id, 'linkedTeams'), {
           userTeamId,
           teamName: squad.name,
+          ...(squad.shortName?.trim() ? { teamShortName: squad.shortName.trim() } : {}),
         } satisfies TournamentLinkedTeamDoc),
       )
-      closeAddTeamModal()
+      setError(null)
+      if (t.teamCount != null && linkedTeams.length + 1 >= t.teamCount) {
+        closeAddTeamModal()
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not link team')
+    } finally {
+      setLinkingSquadId(null)
     }
   }
 
-  async function removeLinkedTeam(linkDocId: string) {
-    if (!id || !confirm('Remove this squad from the tournament draw?')) return
+  async function confirmRemoveLinkedTeam() {
+    if (!id || !linkedTeamToRemove) return
+    const { id: linkDocId } = linkedTeamToRemove
+    setError(null)
     try {
       await run(() => deleteDoc(doc(getDb(), 'tournaments', id, 'linkedTeams', linkDocId)))
+      setLinkedTeamToRemove(null)
     } catch {
       setError('Could not remove link.')
+      setLinkedTeamToRemove(null)
     }
   }
 
@@ -626,6 +655,7 @@ export function TournamentDetailPage() {
   const canScheduleMatches = linkedTeams.length >= squadsRequiredToSchedule
   const hasSchedulingGroups = tournamentGroups.length > 0
   const canOpenScheduleModal = canScheduleMatches && hasSchedulingGroups
+  const tournamentEnded = Boolean(t.tournamentOutcome)
 
   function linkedTeamDisplayName(linkDocId: string): string {
     const row = linkedTeams.find((l) => l.id === linkDocId)
@@ -647,10 +677,12 @@ export function TournamentDetailPage() {
             <header className="min-w-0 flex-1 space-y-1">
               <h1 className="text-2xl font-bold tracking-tight text-slate-900">{t.name}</h1>
               <p className="text-sm text-muted-foreground">
-                You&apos;re the organiser — edit details, squads, fixtures, and standings here.
+                {tournamentEnded
+                  ? 'Final standings and results.'
+                  : "You're the organiser — edit details, squads, fixtures, and standings here."}
               </p>
             </header>
-            {!editOverview && (
+            {!editOverview && !tournamentEnded && (
               <Button
                 type="button"
                 variant="outline"
@@ -714,6 +746,14 @@ export function TournamentDetailPage() {
 
         {activeTab === 'overview' && (
           <div className="space-y-3" role="tabpanel" aria-labelledby="tab-overview">
+            {tournamentEnded && t.tournamentOutcome && (
+              <TournamentOutcomeOverviewCard
+                outcome={t.tournamentOutcome}
+                teamLabel={linkedTeamDisplayName}
+                headingId="app-tournament-outcome-heading"
+              />
+            )}
+
             {!editOverview && (
               <>
                 {(t.teamCount != null ||
@@ -797,32 +837,6 @@ export function TournamentDetailPage() {
                     </OverviewDetailRow>
                   </div>
                 </section>
-                {t.tournamentOutcome && (
-                  <section
-                    className="public-tournament-surface public-tournament-overview-card"
-                    aria-labelledby="app-tournament-outcome-heading"
-                  >
-                    <h3 id="app-tournament-outcome-heading" className="public-tournament-overview-section-title">
-                      <Flag className="inline-block size-4 align-[-2px] text-primary" strokeWidth={2} aria-hidden />
-                      <span className="ml-1.5">Tournament result</span>
-                    </h3>
-                    <p className="text-sm text-muted-foreground" style={{ marginTop: 0 }}>
-                      <strong className="text-slate-800">Winner:</strong>{' '}
-                      {linkedTeamDisplayName(t.tournamentOutcome.winnerLinkedTeamId)}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      <strong className="text-slate-800">Runner-up:</strong>{' '}
-                      {linkedTeamDisplayName(t.tournamentOutcome.runnerUpLinkedTeamId)}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      <strong className="text-slate-800">Player of the tournament:</strong>{' '}
-                      {t.tournamentOutcome.playerOfTheTournament.name}
-                      {t.tournamentOutcome.playerOfTheTournament.source === 'manual' ? (
-                        <span className="muted small"> (selected manually)</span>
-                      ) : null}
-                    </p>
-                  </section>
-                )}
               </>
             )}
 
@@ -861,7 +875,7 @@ export function TournamentDetailPage() {
                       id="edit-tournament-squad"
                       type="number"
                       min={2}
-                      max={30}
+                      max={15}
                       step={1}
                       value={editDefaultSquadSize}
                       onChange={(e) => setEditDefaultSquadSize(Number(e.target.value))}
@@ -1052,6 +1066,7 @@ export function TournamentDetailPage() {
               </form>
             )}
 
+          {!tournamentEnded && (
           <section
             className="public-tournament-surface public-tournament-overview-card"
             aria-labelledby="app-end-tournament-heading"
@@ -1060,19 +1075,19 @@ export function TournamentDetailPage() {
               End tournament
             </h2>
             <p className="text-sm text-muted-foreground" style={{ marginTop: 0 }}>
-              Record winner, runner-up, and Player of the tournament. You can still schedule matches and manage groups
-              afterwards.
+              Record winner, runner-up, and Player of the tournament.
             </p>
             <button
               type="button"
               className="btn"
               style={{ marginTop: '0.65rem' }}
-              disabled={writePending || Boolean(t.tournamentOutcome)}
+              disabled={writePending}
               onClick={() => void openEndTournamentDialog()}
             >
-              {t.tournamentOutcome ? 'Tournament ended' : 'End tournament…'}
+              End tournament…
             </button>
           </section>
+          )}
 
           <section
             className="public-tournament-surface public-tournament-overview-card"
@@ -1105,17 +1120,19 @@ export function TournamentDetailPage() {
 
       {activeTab === 'teams' && (
         <div role="tabpanel" aria-labelledby="tab-teams">
-          <p className="text-sm text-muted-foreground">
-            Squads live under <Link to="/app/teams">My teams</Link>; link them here for standings and the fixture draw.
-          </p>
+          {!tournamentEnded && (
+            <p className="text-sm text-muted-foreground">
+              Squads live under <Link to="/app/teams">My teams</Link>; link them here for standings and the fixture draw.
+            </p>
+          )}
 
-          {t.teamCount != null && linkedTeams.length >= t.teamCount && (
+          {!tournamentEnded && t.teamCount != null && linkedTeams.length >= t.teamCount && (
             <p className="muted small" style={{ marginTop: '0.75rem' }}>
               All {t.teamCount} squads for this tournament are linked. Remove a squad to add a different one.
             </p>
           )}
 
-          {!(t.teamCount != null && linkedTeams.length >= t.teamCount) && (
+          {!tournamentEnded && !(t.teamCount != null && linkedTeams.length >= t.teamCount) && (
             <div className="tourn-team-or" aria-hidden="true">
               <span className="tourn-team-or-line" />
               <span className="tourn-team-or-text">OR</span>
@@ -1124,7 +1141,7 @@ export function TournamentDetailPage() {
           )}
 
           <div className="tourn-team-grid">
-            {!(t.teamCount != null && linkedTeams.length >= t.teamCount) && (
+            {!tournamentEnded && !(t.teamCount != null && linkedTeams.length >= t.teamCount) && (
               <div className="tourn-team-card tourn-team-card--add">
                 <button
                   type="button"
@@ -1150,7 +1167,9 @@ export function TournamentDetailPage() {
             )}
 
             {linkedTeams.map((l) => {
-              const label = l.teamName ?? myTeams.find((m) => m.id === l.userTeamId)?.name ?? l.userTeamId
+              const squad = myTeams.find((m) => m.id === l.userTeamId)
+              const label = l.teamName ?? squad?.name ?? l.userTeamId
+              const shortName = squad?.shortName?.trim() || l.teamShortName?.trim()
               const hue = teamAvatarHue(label)
               return (
                 <article key={l.id} className="tourn-team-card">
@@ -1159,23 +1178,27 @@ export function TournamentDetailPage() {
                     style={{ background: `hsl(${hue} 32% 38%)` }}
                     aria-hidden="true"
                   >
-                    <span className="tourn-team-card-initials">{teamInitials(label)}</span>
+                    <span className="tourn-team-card-initials">
+                      {tournTeamCardAvatarLabel({ name: label, shortName })}
+                    </span>
                   </div>
                   <div className="tourn-team-card-footer">
                     <strong className="tourn-team-card-title">{label}</strong>
-                    <div className="tourn-team-card-actions">
-                      <Link className="tourn-team-card-link" to={`/app/teams/${l.userTeamId}`}>
-                        Edit roster
-                      </Link>
-                      <button
-                        type="button"
-                        className="tourn-team-card-remove"
-                        disabled={writePending}
-                        onClick={() => void removeLinkedTeam(l.id)}
-                      >
-                        Remove
-                      </button>
-                    </div>
+                    {!tournamentEnded ? (
+                      <div className="tourn-team-card-actions">
+                        <Link className="tourn-team-card-link" to={`/app/teams/${l.userTeamId}`}>
+                          Edit roster
+                        </Link>
+                        <button
+                          type="button"
+                          className="tourn-team-card-remove"
+                          disabled={writePending}
+                          onClick={() => setLinkedTeamToRemove({ id: l.id, label })}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                 </article>
               )
@@ -1191,62 +1214,66 @@ export function TournamentDetailPage() {
 
       {activeTab === 'matches' && (
         <div role="tabpanel" aria-labelledby="tab-matches">
-          <p className="text-sm text-muted-foreground">
-            Link every squad on <strong className="font-semibold text-slate-700">Teams</strong>, add groups on{' '}
-            <strong className="font-semibold text-slate-700">Groups</strong>, then use{' '}
-            <strong className="font-semibold text-slate-700">Schedule match</strong>.
-            {t.teamCount != null ? (
-              <>
-                {' '}
-                ({linkedTeams.length} of {t.teamCount} squads linked
-                {tournamentGroups.length > 0 ? ` · ${tournamentGroups.length} group${tournamentGroups.length === 1 ? '' : 's'}` : ' · no groups yet'}).
-              </>
-            ) : (
-              <>
-                {' '}
-                (at least two squads{hasSchedulingGroups ? '' : '; at least one group required'}).
-              </>
-            )}
-          </p>
-          <div className="flex flex-wrap items-center gap-2 gap-y-2" style={{ marginTop: '0.75rem', marginBottom: '1rem' }}>
-            <Button
-              type="button"
-              variant="default"
-              className="font-semibold shadow-sm"
-              disabled={writePending || !canOpenScheduleModal}
-              onClick={() => openScheduleMatchModal()}
-              title={
-                !canScheduleMatches
-                  ? t.teamCount != null
-                    ? `Link all ${t.teamCount} squads on the Teams tab (${linkedTeams.length} linked so far)`
-                    : 'Link every squad on the Teams tab before scheduling (need at least two)'
-                  : !hasSchedulingGroups
-                    ? 'Create at least one group on the Groups tab before scheduling matches'
-                    : undefined
-              }
-            >
-              Schedule match
-            </Button>
-            {!canScheduleMatches && (
-              <span className="text-sm text-muted-foreground">
-                {t.teamCount != null ? (
-                  <>
-                    Link all {t.teamCount} squads on <strong className="font-semibold text-slate-700">Teams</strong> first ({linkedTeams.length}{' '}
-                    of {t.teamCount} linked).
-                  </>
-                ) : (
-                  <>
-                    Link every squad on <strong className="font-semibold text-slate-700">Teams</strong> first (need at least two).
-                  </>
-                )}
-              </span>
-            )}
-            {canScheduleMatches && !hasSchedulingGroups && (
-              <span className="text-sm text-muted-foreground">
-                Create at least one group on <strong className="font-semibold text-slate-700">Groups</strong> before scheduling.
-              </span>
-            )}
-          </div>
+          {!tournamentEnded && (
+            <p className="text-sm text-muted-foreground">
+              Link every squad on <strong className="font-semibold text-slate-700">Teams</strong>, add groups on{' '}
+              <strong className="font-semibold text-slate-700">Groups</strong>, then use{' '}
+              <strong className="font-semibold text-slate-700">Schedule match</strong>.
+              {t.teamCount != null ? (
+                <>
+                  {' '}
+                  ({linkedTeams.length} of {t.teamCount} squads linked
+                  {tournamentGroups.length > 0 ? ` · ${tournamentGroups.length} group${tournamentGroups.length === 1 ? '' : 's'}` : ' · no groups yet'}).
+                </>
+              ) : (
+                <>
+                  {' '}
+                  (at least two squads{hasSchedulingGroups ? '' : '; at least one group required'}).
+                </>
+              )}
+            </p>
+          )}
+          {!tournamentEnded && (
+            <div className="flex flex-wrap items-center gap-2 gap-y-2" style={{ marginTop: '0.75rem', marginBottom: '1rem' }}>
+              <Button
+                type="button"
+                variant="default"
+                className="font-semibold shadow-sm"
+                disabled={writePending || !canOpenScheduleModal}
+                onClick={() => openScheduleMatchModal()}
+                title={
+                  !canScheduleMatches
+                    ? t.teamCount != null
+                      ? `Link all ${t.teamCount} squads on the Teams tab (${linkedTeams.length} linked so far)`
+                      : 'Link every squad on the Teams tab before scheduling (need at least two)'
+                    : !hasSchedulingGroups
+                      ? 'Create at least one group on the Groups tab before scheduling matches'
+                      : undefined
+                }
+              >
+                Schedule match
+              </Button>
+              {!canScheduleMatches && (
+                <span className="text-sm text-muted-foreground">
+                  {t.teamCount != null ? (
+                    <>
+                      Link all {t.teamCount} squads on <strong className="font-semibold text-slate-700">Teams</strong> first ({linkedTeams.length}{' '}
+                      of {t.teamCount} linked).
+                    </>
+                  ) : (
+                    <>
+                      Link every squad on <strong className="font-semibold text-slate-700">Teams</strong> first (need at least two).
+                    </>
+                  )}
+                </span>
+              )}
+              {canScheduleMatches && !hasSchedulingGroups && (
+                <span className="text-sm text-muted-foreground">
+                  Create at least one group on <strong className="font-semibold text-slate-700">Groups</strong> before scheduling.
+                </span>
+              )}
+            </div>
+          )}
 
           {tournamentMatchesError && (
             <p className="text-sm text-destructive" role="alert">
@@ -1283,14 +1310,16 @@ export function TournamentDetailPage() {
                       </div>
 
                       <div className="public-tournament-match-body">
-                        <p className="public-tournament-match-teams-line">
-                          <span className="match-scorecard-teamname">{m.home.name}</span>
-                          <span className="public-tournament-match-vs" aria-hidden>
-                            vs
-                          </span>
-                          <span className="match-scorecard-teamname">{m.away.name}</span>
-                        </p>
-                        <PublicTournamentMatchScoreLines match={m} />
+                        {m.status === 'scheduled' && (
+                          <p className="public-tournament-match-teams-line">
+                            <span className="match-scorecard-teamname">{m.home.name}</span>
+                            <span className="public-tournament-match-vs" aria-hidden>
+                              vs
+                            </span>
+                            <span className="match-scorecard-teamname">{m.away.name}</span>
+                          </p>
+                        )}
+                        <PublicTournamentMatchScoreLines match={m} allowPrivateReplay />
                       </div>
 
                       <div className="match-scorecard-upcoming-footer public-tournament-match-card-footer">
@@ -1340,7 +1369,13 @@ export function TournamentDetailPage() {
 
       {activeTab === 'groups' && (
         <div className="space-y-3" role="tabpanel" aria-labelledby="tab-groups">
-          <TournamentGroupsTab tournamentId={id!} linkedTeams={linkedTeams} writePending={writePending} run={run} />
+          <TournamentGroupsTab
+            tournamentId={id!}
+            linkedTeams={linkedTeams}
+            writePending={writePending}
+            run={run}
+            readOnly={tournamentEnded}
+          />
         </div>
       )}
 
@@ -1368,156 +1403,33 @@ export function TournamentDetailPage() {
       )}
       </div>
 
-      <dialog
-        ref={endTournamentDialogRef}
-        className="team-picker-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="end-tournament-dialog-title"
-        onClose={() => setEndTournamentError(null)}
-      >
-        <div className="team-picker-dialog-inner">
-          <h2 id="end-tournament-dialog-title" className="team-picker-dialog-title">
-            End tournament
-          </h2>
-          <p className="muted small" style={{ marginTop: 0 }}>
-            Confirm final standings for <strong>{t.name}</strong>. Player of the tournament defaults to the MVP leader
-            from the stats summary (you can change it).
-          </p>
-          <div className="space-y-3" style={{ marginTop: '1rem' }}>
-            <div>
-              <label htmlFor="end-tourn-winner" className="block text-sm font-semibold text-slate-900">
-                Winner
-              </label>
-              <select
-                id="end-tourn-winner"
-                className={matchFormInputFieldShell}
-                value={endTournamentWinnerId}
-                onChange={(e) => setEndTournamentWinnerId(e.target.value)}
-              >
-                <option value="">Select team</option>
-                {linkedTeams.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {linkedTeamDisplayName(l.id)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label htmlFor="end-tourn-runner" className="block text-sm font-semibold text-slate-900">
-                Runner-up
-              </label>
-              <select
-                id="end-tourn-runner"
-                className={matchFormInputFieldShell}
-                value={endTournamentRunnerId}
-                onChange={(e) => setEndTournamentRunnerId(e.target.value)}
-              >
-                <option value="">Select team</option>
-                {linkedTeams.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {linkedTeamDisplayName(l.id)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label htmlFor="end-tourn-pot" className="block text-sm font-semibold text-slate-900">
-                Player of the tournament
-              </label>
-              <select
-                id="end-tourn-pot"
-                className={matchFormInputFieldShell}
-                value={endTournamentPotKey}
-                onChange={(e) => setEndTournamentPotKey(e.target.value)}
-                disabled={statsPlayersForPot.length === 0}
-              >
-                {statsPlayersForPot.length === 0 ? (
-                  <option value="">No stats summary yet — play completed matches first</option>
-                ) : (
-                  statsPlayersForPot.map((p) => {
-                    const key = `${p.teamId}${POT_KEY_SEP}${p.playerId}`
-                    return (
-                      <option key={key} value={key}>
-                        {p.name} · {p.teamId} · MVP {p.mvpScore.toFixed(0)}
-                      </option>
-                    )
-                  })
-                )}
-              </select>
-            </div>
-          </div>
-          {endTournamentError ? (
-            <p className="error" style={{ marginTop: '0.75rem' }}>
-              {endTournamentError}
-            </p>
-          ) : null}
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '1rem' }}>
-            <button type="button" className="btn" disabled={writePending} onClick={() => closeEndTournamentDialog()}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="btn primary"
-              disabled={writePending || statsPlayersForPot.length === 0}
-              onClick={() => void confirmEndTournament()}
-            >
-              <BtnPendingLabel pending={writePending} idle="Save & end" />
-            </button>
-          </div>
-        </div>
-      </dialog>
+      <EndTournamentDialog
+        open={endTournamentOpen}
+        onClose={() => closeEndTournamentDialog()}
+        tournamentName={t.name}
+        teamOptions={linkedTeams.map((l) => ({ id: l.id, label: linkedTeamDisplayName(l.id) }))}
+        statsPlayers={statsPlayersForPot}
+        potKeySep={POT_KEY_SEP}
+        winnerId={endTournamentWinnerId}
+        onWinnerChange={setEndTournamentWinnerId}
+        runnerId={endTournamentRunnerId}
+        onRunnerChange={setEndTournamentRunnerId}
+        potKey={endTournamentPotKey}
+        onPotKeyChange={setEndTournamentPotKey}
+        error={endTournamentError}
+        writePending={writePending}
+        onSubmit={() => void confirmEndTournament()}
+      />
 
-      <dialog
-        ref={deleteTournamentDialogRef}
-        className="team-picker-dialog"
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="delete-tournament-dialog-title"
-        onClose={() => setError(null)}
-      >
-        <div className="team-picker-dialog-inner">
-          <h2 id="delete-tournament-dialog-title" className="team-picker-dialog-title">
-            Delete this tournament?
-          </h2>
-          <p style={{ marginTop: 0 }}>
-            Permanently delete <strong>{t.name}</strong>?
-          </p>
-          <p className="muted small" style={{ marginTop: '0.5rem' }}>
-            This cannot be undone. The following will be <strong>permanently removed</strong>:
-          </p>
-          <ul className="list" style={{ margin: '0.5rem 0 1rem', paddingLeft: '1.25rem' }}>
-            <li>{deleteDialogMatchBullet}</li>
-            <li>Tournament standings and stats summaries</li>
-          </ul>
-          <p className="muted small" style={{ marginTop: 0 }}>
-            Team rosters you opened from this tournament are not deleted; you can still use each squad from My teams.
-          </p>
-          {error && (
-            <p className="error" style={{ marginTop: '0.75rem' }}>
-              {error}
-            </p>
-          )}
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '1rem' }}>
-            <button
-              type="button"
-              className="btn"
-              disabled={writePending}
-              onClick={() => closeDeleteTournamentDialog()}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="btn danger"
-              disabled={writePending}
-              onClick={() => void confirmDeleteTournament()}
-            >
-              <BtnPendingLabel pending={writePending} idle="Delete permanently" />
-            </button>
-          </div>
-        </div>
-      </dialog>
+      <DeleteTournamentDialog
+        open={deleteTournamentOpen}
+        onClose={() => closeDeleteTournamentDialog()}
+        tournamentName={t.name}
+        matchBullet={deleteDialogMatchBullet}
+        error={error}
+        writePending={writePending}
+        onConfirm={() => void confirmDeleteTournament()}
+      />
 
       <ScheduleTournamentMatchDialog
         open={scheduleMatchOpen}
@@ -1533,72 +1445,70 @@ export function TournamentDetailPage() {
         onGoToGroupsTab={() => setTab('groups')}
       />
 
+      <AlertDialog open={linkedTeamToRemove != null} onOpenChange={(open) => !open && setLinkedTeamToRemove(null)}>
+        <AlertDialogContent
+          size="sm"
+          className="max-w-[min(100vw-2rem,22rem)] gap-0 border border-slate-100 p-6 shadow-xl sm:max-w-md"
+        >
+          <AlertDialogHeader className="flex flex-col items-center justify-center space-y-0 text-center">
+            <div
+              className="mb-4 flex size-14 shrink-0 items-center justify-center rounded-full bg-rose-100 text-primary"
+              aria-hidden
+            >
+              <Trash2 className="size-7" strokeWidth={2.2} />
+            </div>
+            <AlertDialogTitle className="text-center text-lg font-bold text-slate-900">
+              Remove squad from tournament?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="mt-2 px-0.5 text-center text-sm leading-relaxed text-slate-500">
+              Remove{' '}
+              {linkedTeamToRemove ? (
+                <span className="font-semibold text-slate-700">{linkedTeamToRemove.label}</span>
+              ) : (
+                'this squad'
+              )}{' '}
+              from the tournament draw? Standings and scheduled fixtures that use this squad are not deleted, but the
+              squad will no longer appear in this tournament.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-6 grid grid-cols-2 gap-3 border-0 bg-transparent p-0 sm:flex sm:flex-row sm:justify-stretch">
+            <AlertDialogCancel className="h-10 w-full border-slate-200 bg-white text-slate-900 shadow-sm hover:bg-slate-50 sm:flex-1">
+              Cancel
+            </AlertDialogCancel>
+            <Button
+              type="button"
+              variant="default"
+              className="h-10 w-full !text-primary-foreground no-underline hover:!text-primary-foreground sm:flex-1"
+              disabled={writePending}
+              onClick={() => void confirmRemoveLinkedTeam()}
+            >
+              Remove
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <dialog
         ref={addTeamDialogRef}
-        className="team-picker-dialog"
+        className="team-picker-dialog team-picker-dialog--squad"
+        aria-labelledby={addTeamDialogTitleId}
         onClose={() => setAddTeamSearch('')}
       >
-        <div className="team-picker-dialog-inner">
-          <div className="team-picker-dialog-head">
-            <h2 id="add-team-dialog-title" className="team-picker-dialog-title">
-              Add squad to tournament
-            </h2>
-            <button type="button" className="btn team-picker-close" onClick={() => closeAddTeamModal()}>
-              Close
-            </button>
-          </div>
-          <p className="tourn-add-team-create-line muted small" style={{ margin: '0 0 0.75rem' }}>
-            Need a new roster?{' '}
-            <Link to="/app/teams/new" onClick={() => closeAddTeamModal()}>
-              Create a new squad
-            </Link>
-            <span> — then open this dialog again to add it to the tournament.</span>
-          </p>
-          <label className="tourn-add-team-search-label">
-            <span className="visually-hidden">Search teams</span>
-            <input
-              type="search"
-              className="tourn-add-team-search"
-              placeholder="Search your squads by name…"
-              value={addTeamSearch}
-              onChange={(e) => setAddTeamSearch(e.target.value)}
-              autoComplete="off"
-              autoFocus
-            />
-          </label>
-          {linkableTeams.length === 0 ? (
-            <p className="muted">
-              {myTeams.length === 0 ? (
-                <>You have no squads yet — use <strong>Create a new squad</strong> above, then open this dialog again.</>
-              ) : (
-                'All of your squads are already in this tournament.'
-              )}
-            </p>
-          ) : filteredLinkableTeams.length === 0 ? (
-            <p className="muted">No squads match your search.</p>
-          ) : (
-            <ul className="team-picker-list list" role="listbox" aria-labelledby="add-team-dialog-title">
-              {filteredLinkableTeams.map((s) => (
-                <li key={s.id} role="presentation">
-                  <button
-                    type="button"
-                    className="team-picker-option"
-                    disabled={writePending}
-                    onClick={() => void linkSquad(s.id)}
-                  >
-                    <span className="team-picker-option-name">{s.name}</span>
-                    <span className="muted small">{s.players.length} players · Add</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          {error && (
-            <p className="error" style={{ marginTop: '0.75rem' }}>
-              {error}
-            </p>
-          )}
-        </div>
+        <TournamentAddSquadDialogContent
+          titleId={addTeamDialogTitleId}
+          search={addTeamSearch}
+          onSearchChange={setAddTeamSearch}
+          searchInputRef={addTeamSearchInputRef}
+          linkableTeams={linkableTeams}
+          filteredLinkableTeams={filteredLinkableTeams}
+          hasAnySquads={myTeams.length > 0}
+          teamSlotsRemaining={teamSlotsRemaining}
+          writePending={writePending}
+          linkingSquadId={linkingSquadId}
+          error={error}
+          onSelectSquad={(teamId) => void linkSquad(teamId)}
+          onClose={() => closeAddTeamModal()}
+        />
       </dialog>
     </>
   )

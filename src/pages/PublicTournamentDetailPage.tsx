@@ -19,12 +19,14 @@ import {
   publicTournamentMatchHeadMeta,
   publicTournamentMatchKicker,
 } from '../components/tournament/tournamentPublicDisplay'
+import { TournamentOutcomeOverviewCard } from '../components/tournament/TournamentOutcomeOverviewCard'
 import { PublicTournamentMatchScoreLines } from '../components/PublicTournamentMatchScoreLines'
 import { TournamentPointsPanel } from '../components/TournamentPointsPanel'
 import { getDb } from '../firebase/config'
 import { useTournamentDetailsDocumentTitle } from '../hooks/useTournamentDetailsDocumentTitle'
 import { cn } from '@/lib/utils'
 import { compareMatchesOperationalOrder } from '../lib/matchListSort'
+import { tournTeamCardAvatarLabel } from '../lib/teamAvatarLabel'
 import {
   formatMatchDateTime,
   formatTournamentDate,
@@ -38,13 +40,6 @@ import type { MatchDoc, TournamentDoc, TournamentGroupDoc, TournamentLinkedTeamD
 
 const TAB_IDS = ['overview', 'matches', 'teams', 'groups', 'points', 'leaderboard', 'mvp'] as const
 type TabId = (typeof TAB_IDS)[number]
-
-function teamInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (parts.length >= 2) return (parts[0]![0]! + parts[1]![0]!).toUpperCase()
-  const s = parts[0] ?? '?'
-  return s.slice(0, 2).toUpperCase()
-}
 
 function teamAvatarHue(name: string): number {
   let h = 0
@@ -265,13 +260,18 @@ export function PublicTournamentDetailPage() {
     )
   }
 
+  const tournamentEnded = Boolean(t.tournamentOutcome)
+  const isOrganiserViewer = Boolean(user && t.createdBy && user.uid === t.createdBy)
+
   return (
     <div className={shellClass}>
       <div className="space-y-1">
         <PublicTournamentBackLink />
         <header className="space-y-1">
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">{t.name}</h1>
-          <p className="text-sm text-muted-foreground">Public standings and fixtures.</p>
+          <p className="text-sm text-muted-foreground">
+            {tournamentEnded ? 'Final standings and results.' : 'Public standings and fixtures.'}
+          </p>
         </header>
       </div>
 
@@ -324,6 +324,14 @@ export function PublicTournamentDetailPage() {
 
       {activeTab === 'overview' && (
         <div className="space-y-3" role="tabpanel" aria-labelledby="tab-overview">
+          {tournamentEnded && t.tournamentOutcome && (
+            <TournamentOutcomeOverviewCard
+              outcome={t.tournamentOutcome}
+              teamLabel={linkedTeamDisplayName}
+              headingId="public-tournament-outcome-heading"
+            />
+          )}
+
           {(t.teamCount != null ||
             t.location ||
             t.startDate ||
@@ -449,14 +457,16 @@ export function PublicTournamentDetailPage() {
                     </div>
 
                     <div className="public-tournament-match-body">
-                      <p className="public-tournament-match-teams-line">
-                        <span className="match-scorecard-teamname">{m.home.name}</span>
-                        <span className="public-tournament-match-vs" aria-hidden>
-                          vs
-                        </span>
-                        <span className="match-scorecard-teamname">{m.away.name}</span>
-                      </p>
-                      <PublicTournamentMatchScoreLines match={m} />
+                      {m.status === 'scheduled' && (
+                        <p className="public-tournament-match-teams-line">
+                          <span className="match-scorecard-teamname">{m.home.name}</span>
+                          <span className="public-tournament-match-vs" aria-hidden>
+                            vs
+                          </span>
+                          <span className="match-scorecard-teamname">{m.away.name}</span>
+                        </p>
+                      )}
+                      <PublicTournamentMatchScoreLines match={m} allowPrivateReplay={isOrganiserViewer} />
                     </div>
 
                     <div className="match-scorecard-upcoming-footer public-tournament-match-card-footer">
@@ -512,7 +522,9 @@ export function PublicTournamentDetailPage() {
                       style={{ background: `hsl(${hue} 32% 38%)` }}
                       aria-hidden="true"
                     >
-                      <span className="tourn-team-card-initials">{teamInitials(label)}</span>
+                      <span className="tourn-team-card-initials">
+                        {tournTeamCardAvatarLabel({ name: label, shortName: l.teamShortName })}
+                      </span>
                     </div>
                     <div className="tourn-team-card-footer">
                       <strong className="tourn-team-card-title">{label}</strong>

@@ -15,7 +15,12 @@ import {
   type ReplayState,
   type ScoreEvent,
 } from '../scoring/engine'
-import { computeMvpPointsForPlayer, type MvpMatchContext, type MvpPlayerStats } from './mvpPoints'
+import {
+  computeMvpPointsForPlayer,
+  isShortFormatMvp,
+  type MvpMatchContext,
+  type MvpPlayerStats,
+} from './mvpPoints'
 
 export type PlayerMvpRow = {
   playerId: string
@@ -122,6 +127,7 @@ function buildMatchContext(match: MatchDoc, state: ReplayState): MvpMatchContext
   return {
     winningTeamId,
     topScorerPlayerId: topScorerPlayerId(state),
+    shortFormat: isShortFormatMvp(match.oversLimit),
   }
 }
 

@@ -1047,6 +1047,28 @@ export function replayEvents(cfg: ReplayConfig, events: ScoreEvent[]): ReplaySta
   return state
 }
 
+/**
+ * Last ball still in effect for the given innings and batting side (same undo rules as {@link replayEvents}).
+ */
+export function lastEffectiveBallForInnings(
+  events: ScoreEvent[],
+  innings: 1 | 2,
+  battingSide: Side,
+): BallEventPayload | null {
+  const sorted = [...events].sort((a, b) => a.seq - b.seq)
+  const undone = new Set<number>()
+  for (const e of sorted) {
+    if (e.kind === 'undo') undone.add(e.revertedSeq)
+  }
+  let last: BallEventPayload | null = null
+  for (const e of sorted) {
+    if (e.kind !== 'ball' || !e.ball || undone.has(e.seq)) continue
+    const b = e.ball
+    if (b.innings === innings && b.battingSide === battingSide) last = b
+  }
+  return last
+}
+
 /** Overs as `o` or `o.b`; whole overs omit `.0` (e.g. `2` not `2.0`). */
 export function oversString(legalBalls: number, ballsPerOver: number): string {
   const o = Math.floor(legalBalls / ballsPerOver)

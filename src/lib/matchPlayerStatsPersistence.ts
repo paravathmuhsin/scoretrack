@@ -14,6 +14,11 @@ import {
   type ScoreEvent,
 } from '../scoring/engine'
 import { computeMatchMvp } from './mvpMatch'
+import {
+  captaincyIncrementsForPlayer,
+  resolveMatchWinnerForStats,
+  type PointsOutcome,
+} from './captaincyStats'
 import type { MatchDoc, MatchPlayerStatsDoc, PlayerCareerStatsDoc, PlayerOfTheMatchResult } from '../types/models'
 
 export function buildPlayerOfTheMatchResult(mvp: ReturnType<typeof computeMatchMvp>): PlayerOfTheMatchResult | null {
@@ -86,8 +91,10 @@ export function applyMatchCompletionStatsToBatch(
   events: ScoreEvent[],
   playerOfTheMatchResult: PlayerOfTheMatchResult | null,
   existingCareerByPlayerId: Record<string, Partial<PlayerCareerStatsDoc> | null>,
+  pointsOutcome?: PointsOutcome,
 ): void {
   const mvp = computeMatchMvp(match, cfg, events, state)
+  const winnerSide = resolveMatchWinnerForStats(state, pointsOutcome)
   const ids = xiIds(match)
   const mid = match.id
   const tid = match.tournamentId ?? null
@@ -104,6 +111,7 @@ export function applyMatchCompletionStatsToBatch(
       match.away.players.find((p) => p.playerId === pid)?.name ??
       pid
     const wasPotm = Boolean(playerOfTheMatchResult && playerOfTheMatchResult.playerId === pid)
+    const captaincy = captaincyIncrementsForPlayer(match, pid, winnerSide)
 
     const facedBattingInnings = bs.balls > 0 || bs.runs > 0 || bs.out
     const battingInningsThis = facedBattingInnings ? 1 : 0
@@ -173,6 +181,7 @@ export function applyMatchCompletionStatsToBatch(
       fieldingRunOuts: fd.runOuts,
       fieldingStumpings: fd.stumpings,
       wasPotm,
+      ...(captaincy ? { wasCaptain: true } : {}),
     }
     batch.set(rowRef, row, { merge: true })
 
@@ -206,6 +215,12 @@ export function applyMatchCompletionStatsToBatch(
       bowlingFourWicketInnings: increment(fourWThis),
       bowlingFiveWicketInnings: increment(fiveWThis),
       bowlingTenWicketMatches: increment(tenWMatchThis),
+    }
+    if (captaincy) {
+      careerPatch.captainMatches = increment(captaincy.matches)
+      careerPatch.captainWins = increment(captaincy.wins)
+      careerPatch.captainLosses = increment(captaincy.losses)
+      careerPatch.captainTies = increment(captaincy.ties)
     }
     if (mergedBest && mergedBest.w > 0) {
       careerPatch.bestBowlingWickets = mergedBest.w

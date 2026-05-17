@@ -32,6 +32,7 @@ export async function createScheduledTournamentMatch(
     oversLimit: opts.oversLimit ?? DEFAULT_OVERS,
     oversPerBowler: opts.oversPerBowler ?? DEFAULT_OVERS_PER_BOWLER,
     ballsPerOver: 6,
+    freeHitOnNoBall: false,
     scheduledAt: Timestamp.fromDate(opts.scheduledAt),
     status: 'scheduled',
     createdBy: opts.organiserUid,

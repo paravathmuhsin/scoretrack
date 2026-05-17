@@ -21,13 +21,15 @@ type Props = {
   linkedTeams: (TournamentLinkedTeamDoc & { id: string })[]
   writePending: boolean
   run: <T>(fn: () => Promise<T>) => Promise<T>
+  /** When true, hide create / edit / delete controls (tournament ended). */
+  readOnly?: boolean
 }
 
 function teamLabel(link: TournamentLinkedTeamDoc & { id: string }): string {
   return link.teamName ?? link.userTeamId
 }
 
-export function TournamentGroupsTab({ tournamentId, linkedTeams, writePending, run }: Props) {
+export function TournamentGroupsTab({ tournamentId, linkedTeams, writePending, run, readOnly = false }: Props) {
   const [groups, setGroups] = useState<(TournamentGroupDoc & { id: string })[]>([])
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<(TournamentGroupDoc & { id: string }) | null>(null)
@@ -113,48 +115,56 @@ export function TournamentGroupsTab({ tournamentId, linkedTeams, writePending, r
       </AlertDialog>
 
       <h2 className="tabs-panel-heading">Groups</h2>
-      <p className="muted small">
-        Groups define league-stage pools. Add squads on the Teams tab first, then assign them to a group for league fixtures and points tables.
-      </p>
+      {!readOnly && (
+        <p className="muted small">
+          Groups define league-stage pools. Add squads on the Teams tab first, then assign them to a group for league fixtures and points tables.
+        </p>
+      )}
 
-      <div className="flex flex-wrap items-center gap-2 gap-y-2" style={{ marginTop: '0.75rem', marginBottom: '1rem' }}>
-        <Button
-          type="button"
-          variant="default"
-          className="font-semibold shadow-sm"
-          disabled={writePending || linkedTeams.length < 2}
-          title={
-            linkedTeams.length < 2
-              ? 'Link at least two squads on the Teams tab before creating a group'
-              : undefined
-          }
-          onClick={() => {
-            setEditTarget(null)
-            setCreateOpen(true)
-          }}
-        >
-          Create group
-        </Button>
-        {linkedTeams.length < 2 && (
-          <span className="text-sm text-muted-foreground">
-            Link at least two squads on <strong className="font-semibold text-slate-700">Teams</strong> first.
-          </span>
-        )}
-      </div>
+      {!readOnly && (
+        <div className="flex flex-wrap items-center gap-2 gap-y-2" style={{ marginTop: '0.75rem', marginBottom: '1rem' }}>
+          <Button
+            type="button"
+            variant="default"
+            className="font-semibold shadow-sm"
+            disabled={writePending || linkedTeams.length < 2}
+            title={
+              linkedTeams.length < 2
+                ? 'Link at least two squads on the Teams tab before creating a group'
+                : undefined
+            }
+            onClick={() => {
+              setEditTarget(null)
+              setCreateOpen(true)
+            }}
+          >
+            Create group
+          </Button>
+          {linkedTeams.length < 2 && (
+            <span className="text-sm text-muted-foreground">
+              Link at least two squads on <strong className="font-semibold text-slate-700">Teams</strong> first.
+            </span>
+          )}
+        </div>
+      )}
 
-      <CreateTournamentGroupDialog
-        open={groupFormOpen}
-        editingGroup={editTarget}
-        onClose={closeGroupForm}
-        tournamentId={tournamentId}
-        linkedTeams={linkedTeams}
-        writePending={writePending}
-        run={run}
-      />
+      {!readOnly && (
+        <CreateTournamentGroupDialog
+          open={groupFormOpen}
+          editingGroup={editTarget}
+          onClose={closeGroupForm}
+          tournamentId={tournamentId}
+          linkedTeams={linkedTeams}
+          writePending={writePending}
+          run={run}
+        />
+      )}
 
-      <h3 className="tabs-panel-heading">Your groups</h3>
+      {!readOnly ? <h3 className="tabs-panel-heading">Your groups</h3> : null}
       {groups.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No groups yet — create one to assign squads to a league pool.</p>
+        <p className="text-sm text-muted-foreground">
+          {readOnly ? 'No groups in this tournament.' : 'No groups yet — create one to assign squads to a league pool.'}
+        </p>
       ) : (
         <ul className="m-0 list-none space-y-3 p-0" role="list">
           {groups.map((g) => {
@@ -174,29 +184,31 @@ export function TournamentGroupsTab({ tournamentId, linkedTeams, writePending, r
                       {membersLine || 'No squads in this group yet.'}
                     </p>
                   </div>
-                  <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="font-semibold"
-                      disabled={writePending}
-                      onClick={() => {
-                        setCreateOpen(false)
-                        setEditTarget(g)
-                      }}
-                    >
-                      Edit group
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="font-semibold text-destructive hover:bg-destructive/10 hover:text-destructive"
-                      disabled={writePending}
-                      onClick={() => setGroupToDelete(g)}
-                    >
-                      Delete
-                    </Button>
-                  </div>
+                  {!readOnly ? (
+                    <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="font-semibold"
+                        disabled={writePending}
+                        onClick={() => {
+                          setCreateOpen(false)
+                          setEditTarget(g)
+                        }}
+                      >
+                        Edit group
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="font-semibold text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        disabled={writePending}
+                        onClick={() => setGroupToDelete(g)}
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
               </li>
             )

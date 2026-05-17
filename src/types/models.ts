@@ -80,6 +80,11 @@ export interface MatchDoc {
   /** Max overs each bowler may bowl per innings; omit or null = no limit */
   oversPerBowler?: number | null
   ballsPerOver: number
+  /**
+   * When true, the next delivery after a no-ball is scored as a free hit (restricted dismissals).
+   * Omit or false for legacy matches / formats without free hits.
+   */
+  freeHitOnNoBall?: boolean
   scheduledAt: Timestamp
   status: MatchStatus
   createdBy: string
@@ -178,6 +183,8 @@ export interface MatchPlayerStatsDoc {
   fieldingRunOuts: number
   fieldingStumpings: number
   wasPotm: boolean
+  /** True when this player was their side’s captain in the match. */
+  wasCaptain?: boolean
 }
 
 /** Root `playerCareerStats/{playerId}` — rollups from every completed XI (match creator maintains). */
@@ -232,6 +239,11 @@ export interface PlayerCareerStatsDoc {
   fieldingCatches: number
   fieldingRunOuts: number
   fieldingStumpings: number
+  /** Matches where the player was their team’s captain. */
+  captainMatches?: number
+  captainWins?: number
+  captainLosses?: number
+  captainTies?: number
 }
 
 export interface TournamentDoc {
@@ -291,6 +303,8 @@ export interface TournamentLinkedTeamDoc {
   userTeamId: string
   /** Denormalized for display; may be stale if the squad is renamed under My teams. */
   teamName?: string
+  /** Denormalized squad short code for compact avatars (e.g. tournament team cards). */
+  teamShortName?: string
 }
 
 export interface TeamDoc {

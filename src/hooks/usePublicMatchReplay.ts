@@ -26,11 +26,15 @@ type MatchReplayInput = {
 export function usePublicMatchReplay(
   match: MatchReplayInput,
   replayMode: 'live' | 'completed' | 'off',
+  /** Load events for private fixtures (e.g. organiser tournament view). */
+  allowPrivateReplay = false,
 ): { cfg: ReplayConfig | null; state: ReturnType<typeof replayEvents> | null } {
   const [events, setEvents] = useState<ScoreEvent[]>([])
 
+  const canReplay = match.isPublic || allowPrivateReplay
+
   useEffect(() => {
-    if (replayMode === 'off' || !match.id || !match.isPublic) {
+    if (replayMode === 'off' || !match.id || !canReplay) {
       setEvents([])
       return
     }
@@ -67,7 +71,7 @@ export function usePublicMatchReplay(
       })
       setEvents(out)
     })
-  }, [match.id, match.isPublic, replayMode])
+  }, [match.id, canReplay, replayMode])
 
   const cfg: ReplayConfig | null = useMemo(() => {
     if (!match.lineup) return null

@@ -158,7 +158,7 @@ export function TournamentPointsPanel({ tournamentId: id, variant = 'embedded' }
         className={publicTab ? 'tournament-stat-toolbar' : 'row'}
         style={publicTab ? undefined : { marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}
       >
-        {tournament.createdBy === user?.uid &&
+        {tournament.createdBy === user?.uid && !tournament.tournamentOutcome &&
           (publicTab ? (
             <Button type="button" disabled={recomputePending} onClick={() => void refresh()}>
               <BtnPendingLabel

@@ -18,7 +18,7 @@ import { BtnPendingLabel } from './Spinner'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-const SQUAD_OPTIONS = Array.from({ length: 29 }, (_, i) => i + 2)
+const SQUAD_OPTIONS = Array.from({ length: 14 }, (_, i) => i + 2)
 const OVERS_BASE = [1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 16, 20, 25, 30, 40, 50]
 const BOWLER_OPTIONS = Array.from({ length: 20 }, (_, i) => i + 1)
 
@@ -233,6 +233,9 @@ export type MatchFormCreateFieldsProps = {
   setScheduledAt: (s: string) => void
   isPublic: boolean
   setIsPublic: (v: boolean) => void
+  /** ICC-style free hit on the ball after a no-ball (default off). */
+  freeHitOnNoBall: boolean
+  setFreeHitOnNoBall: (v: boolean) => void
   canSubmit: boolean
   writePending: boolean
   error: string | null
@@ -264,6 +267,8 @@ export function MatchFormCreateFields({
   setScheduledAt,
   isPublic,
   setIsPublic,
+  freeHitOnNoBall,
+  setFreeHitOnNoBall,
   canSubmit,
   writePending,
   error,
@@ -279,10 +284,12 @@ export function MatchFormCreateFields({
   const bowlerChoices = mergeChoices(BOWLER_OPTIONS, oversPerBowler)
   const startDateTimeInputId = useId()
   const friendlyVenueInputId = useId()
+  const friendlyVenueHintId = useId()
   const startNowHintId = useId()
   const scheduleStartHintId = useId()
   const [startNowInfoOpen, setStartNowInfoOpen] = useState(false)
   const [scheduleStartInfoOpen, setScheduleStartInfoOpen] = useState(false)
+  const [venueInfoOpen, setVenueInfoOpen] = useState(false)
 
   return (
     <>
@@ -352,7 +359,7 @@ export function MatchFormCreateFields({
       <section className="space-y-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.04)]">
         <MatchRuleSelectRow
           icon={Users}
-          label="Players per team (XI size)"
+          label="Players per team"
           hint={SQUAD_HINT}
           infoAriaLabel="About players per team"
           value={squadSize}
@@ -409,74 +416,13 @@ export function MatchFormCreateFields({
           <div className="flex min-w-0 flex-1 flex-col gap-2">
             <div
               className={cn(
-                'flex items-start gap-1 rounded-xl border-2 p-3 transition-colors sm:min-w-0',
-                scheduleMode === 'now'
-                  ? 'border-primary/35 bg-primary/[0.06]'
-                  : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50',
-              )}
-            >
-              <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 !flex-row">
-                <input
-                  type="radio"
-                  name="scheduleMode"
-                  className="sr-only"
-                  checked={scheduleMode === 'now'}
-                  onChange={() => setScheduleMode('now')}
-                />
-                <div
-                  className={cn(
-                    'flex size-10 shrink-0 items-center justify-center rounded-lg',
-                    scheduleMode === 'now' ? 'bg-primary/10 text-primary' : 'bg-slate-100 text-slate-500',
-                  )}
-                >
-                  <Zap className="size-5" strokeWidth={2.2} aria-hidden />
-                </div>
-                <span className="min-w-0 flex-1 font-bold text-slate-900">Start now</span>
-              </label>
-              <button
-                type="button"
-                className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-                aria-label="About Start now"
-                aria-expanded={startNowInfoOpen}
-                aria-controls={startNowHintId}
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  setStartNowInfoOpen((o) => !o)
-                }}
-              >
-                <Info className="size-4" strokeWidth={2.2} aria-hidden />
-              </button>
-            </div>
-            <div
-              id={startNowHintId}
-              role="region"
-              aria-live="polite"
-              hidden={!startNowInfoOpen}
-              className="relative rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5 pr-9 text-xs leading-relaxed text-slate-600"
-            >
-              <button
-                type="button"
-                className="absolute right-2 top-2 inline-flex size-5 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-700"
-                aria-label="Close Start now info"
-                onClick={() => setStartNowInfoOpen(false)}
-              >
-                <X className="size-3.5" strokeWidth={2.5} aria-hidden />
-              </button>
-              {START_NOW_HINT}
-            </div>
-          </div>
-
-          <div className="flex min-w-0 flex-1 flex-col gap-2">
-            <div
-              className={cn(
-                'flex items-start gap-1 rounded-xl border-2 p-3 transition-colors sm:min-w-0',
+                'flex items-start gap-1 rounded-xl border-2 p-2.5 transition-colors sm:min-w-0',
                 scheduleMode === 'later'
                   ? 'border-primary/35 bg-primary/[0.06]'
                   : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50',
               )}
             >
-              <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 !flex-row">
+              <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 !flex-row">
                 <input
                   type="radio"
                   name="scheduleMode"
@@ -486,13 +432,13 @@ export function MatchFormCreateFields({
                 />
                 <div
                   className={cn(
-                    'flex size-10 shrink-0 items-center justify-center rounded-lg',
+                    'flex size-9 shrink-0 items-center justify-center rounded-lg',
                     scheduleMode === 'later' ? 'bg-primary/10 text-primary' : 'bg-slate-100 text-slate-500',
                   )}
                 >
-                  <CalendarDays className="size-5" strokeWidth={2.2} aria-hidden />
+                  <CalendarDays className="size-[18px]" strokeWidth={2.2} aria-hidden />
                 </div>
-                <span className="min-w-0 flex-1 font-bold text-slate-900">Schedule start</span>
+                <span className="min-w-0 flex-1 text-[14px] font-semibold leading-snug text-slate-900">Schedule start</span>
               </label>
               <button
                 type="button"
@@ -506,7 +452,7 @@ export function MatchFormCreateFields({
                   setScheduleStartInfoOpen((o) => !o)
                 }}
               >
-                <Info className="size-4" strokeWidth={2.2} aria-hidden />
+                <Info className="size-3.5" strokeWidth={2.2} aria-hidden />
               </button>
             </div>
             <div
@@ -527,15 +473,76 @@ export function MatchFormCreateFields({
               {SCHEDULE_START_HINT}
             </div>
           </div>
+
+          <div className="flex min-w-0 flex-1 flex-col gap-2">
+            <div
+              className={cn(
+                'flex items-start gap-1 rounded-xl border-2 p-2.5 transition-colors sm:min-w-0',
+                scheduleMode === 'now'
+                  ? 'border-primary/35 bg-primary/[0.06]'
+                  : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50',
+              )}
+            >
+              <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 !flex-row">
+                <input
+                  type="radio"
+                  name="scheduleMode"
+                  className="sr-only"
+                  checked={scheduleMode === 'now'}
+                  onChange={() => setScheduleMode('now')}
+                />
+                <div
+                  className={cn(
+                    'flex size-9 shrink-0 items-center justify-center rounded-lg',
+                    scheduleMode === 'now' ? 'bg-primary/10 text-primary' : 'bg-slate-100 text-slate-500',
+                  )}
+                >
+                  <Zap className="size-[18px]" strokeWidth={2.2} aria-hidden />
+                </div>
+                <span className="min-w-0 flex-1 text-[14px] font-semibold leading-snug text-slate-900">Start now</span>
+              </label>
+              <button
+                type="button"
+                className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                aria-label="About Start now"
+                aria-expanded={startNowInfoOpen}
+                aria-controls={startNowHintId}
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setStartNowInfoOpen((o) => !o)
+                }}
+              >
+                <Info className="size-3.5" strokeWidth={2.2} aria-hidden />
+              </button>
+            </div>
+            <div
+              id={startNowHintId}
+              role="region"
+              aria-live="polite"
+              hidden={!startNowInfoOpen}
+              className="relative rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5 pr-9 text-xs leading-relaxed text-slate-600"
+            >
+              <button
+                type="button"
+                className="absolute right-2 top-2 inline-flex size-5 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-700"
+                aria-label="Close Start now info"
+                onClick={() => setStartNowInfoOpen(false)}
+              >
+                <X className="size-3.5" strokeWidth={2.5} aria-hidden />
+              </button>
+              {START_NOW_HINT}
+            </div>
+          </div>
         </div>
 
         {scheduleMode === 'later' && (
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <div className="flex min-w-0 flex-1 items-center gap-2">
-              <CalendarDays className="size-4 shrink-0 text-primary" strokeWidth={2.2} aria-hidden />
+              <CalendarDays className="size-3.5 shrink-0 text-primary" strokeWidth={2.2} aria-hidden />
               <label
                 htmlFor={startDateTimeInputId}
-                className="text-sm font-semibold text-slate-900"
+                className="text-xs font-semibold text-slate-900"
               >
                 Start date &amp; time
               </label>
@@ -548,7 +555,7 @@ export function MatchFormCreateFields({
                 onChange={(e) => setScheduledAt(e.target.value)}
                 min={nowLocalDateTimeValue()}
                 required={scheduleMode === 'later'}
-                className={matchFormDatetimeLocalShell}
+                className={cn(matchFormDatetimeLocalShell, 'text-sm')}
               />
               <CalendarDays
                 className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-primary"
@@ -562,29 +569,82 @@ export function MatchFormCreateFields({
 
         {showFriendlyVenue && setFriendlyVenue ? (
           <div className="border-t border-slate-100 pt-4">
-            <div className="flex items-start gap-2">
-              <MapPin className="mt-0.5 size-4 shrink-0 text-primary" strokeWidth={2.2} aria-hidden />
-              <div className="min-w-0 flex-1">
-                <label htmlFor={friendlyVenueInputId} className="text-sm font-semibold text-slate-900">
-                  Venue / location
-                </label>
-                <p className="mt-1 text-xs leading-snug text-slate-500">
-                  Required for standalone matches. Shown on the public live score link.
-                </p>
-                <input
-                  id={friendlyVenueInputId}
-                  type="text"
-                  value={friendlyVenue}
-                  onChange={(e) => setFriendlyVenue(e.target.value)}
-                  placeholder="e.g. Central Park Oval"
-                  autoComplete="off"
-                  required
-                  className={cn(inputFieldShell, 'mt-2')}
-                />
-              </div>
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <MapPin className="size-4 shrink-0 text-primary" strokeWidth={2.2} aria-hidden />
+              <label htmlFor={friendlyVenueInputId} className="text-sm font-semibold text-slate-900">
+                Venue / location
+              </label>
+              <button
+                type="button"
+                className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                aria-label="About venue"
+                aria-expanded={venueInfoOpen}
+                aria-controls={friendlyVenueHintId}
+                onClick={() => setVenueInfoOpen((o) => !o)}
+              >
+                <Info className="size-3.5" strokeWidth={2.2} aria-hidden />
+              </button>
             </div>
+            <div
+              id={friendlyVenueHintId}
+              role="region"
+              aria-live="polite"
+              hidden={!venueInfoOpen}
+              className="relative mt-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5 pr-9 text-xs leading-relaxed text-slate-600"
+            >
+              <button
+                type="button"
+                className="absolute right-2 top-2 inline-flex size-5 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-700"
+                aria-label="Close venue info"
+                onClick={() => setVenueInfoOpen(false)}
+              >
+                <X className="size-3.5" strokeWidth={2.5} aria-hidden />
+              </button>
+              Required for standalone matches. Shown on the public live score link.
+            </div>
+            <input
+              id={friendlyVenueInputId}
+              type="text"
+              value={friendlyVenue}
+              onChange={(e) => setFriendlyVenue(e.target.value)}
+              placeholder="e.g. Central Park Oval"
+              autoComplete="off"
+              required
+              className={cn(inputFieldShell, 'mt-2 w-full')}
+            />
           </div>
         ) : null}
+
+        <div className="border-t border-slate-100 pt-4">
+          <label className="flex !flex-row flex-nowrap cursor-pointer items-center !gap-6 rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-[0_1px_3px_rgba(15,23,42,0.06)] transition-colors hover:border-slate-300 focus-within:ring-2 focus-within:ring-primary/25 focus-within:ring-offset-2">
+            <input
+              type="checkbox"
+              checked={freeHitOnNoBall}
+              onChange={(e) => setFreeHitOnNoBall(e.target.checked)}
+              className="sr-only"
+            />
+            <span
+              aria-hidden
+              className={cn(
+                'relative inline-flex h-[30px] w-[52px] shrink-0 rounded-full p-[3px] transition-colors duration-200',
+                freeHitOnNoBall ? 'bg-rose-100' : 'bg-slate-200',
+              )}
+            >
+              <span
+                className={cn(
+                  'absolute top-1/2 size-[22px] -translate-y-1/2 rounded-full shadow-md ring-1 ring-black/5 transition-all duration-200 ease-out',
+                  freeHitOnNoBall ? 'right-[3px] bg-primary' : 'left-[3px] bg-white',
+                )}
+              />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-bold text-slate-900">Free hit after no ball</span>
+              <span className="mt-0.5 block text-sm font-normal text-slate-500">
+                When on, the next delivery after a no-ball is a free hit while scoring (only run out can dismiss).
+              </span>
+            </span>
+          </label>
+        </div>
 
         <div className="border-t border-slate-100 pt-4">
           <label className="flex !flex-row flex-nowrap cursor-pointer items-center !gap-6 rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-[0_1px_3px_rgba(15,23,42,0.06)] transition-colors hover:border-slate-300 focus-within:ring-2 focus-within:ring-primary/25 focus-within:ring-offset-2">
@@ -627,7 +687,7 @@ export function MatchFormCreateFields({
       <Button
         type="submit"
         disabled={!canSubmit || writePending}
-        className="h-12 w-full rounded-xl text-base font-bold !text-primary-foreground shadow-md disabled:opacity-60"
+        className="h-11 w-full rounded-xl text-sm font-bold !text-primary-foreground shadow-md disabled:opacity-60"
       >
         <BtnPendingLabel
           pending={writePending}

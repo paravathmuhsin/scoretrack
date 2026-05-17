@@ -31,6 +31,41 @@ export type MvpPlayerStats = {
 export type MvpMatchContext = {
   winningTeamId: string
   topScorerPlayerId: string
+  /** Matches with overs limit ≤ 15 use reduced wicket / fielding / finisher rates. */
+  shortFormat?: boolean
+}
+
+/** True when the match format is 15 overs per side or fewer (T10, T15, etc.). */
+export function isShortFormatMvp(oversLimit: number): boolean {
+  return Number.isFinite(oversLimit) && oversLimit > 0 && oversLimit <= 15
+}
+
+type MvpScoringRates = {
+  wicketPts: number
+  bowledLbwPts: number
+  runOutPts: number
+  stumpingPts: number
+  chaseFinisherPts: number
+}
+
+const MVP_RATES_STANDARD: MvpScoringRates = {
+  wicketPts: 25,
+  bowledLbwPts: 8,
+  runOutPts: 12,
+  stumpingPts: 12,
+  chaseFinisherPts: 15,
+}
+
+const MVP_RATES_SHORT: MvpScoringRates = {
+  wicketPts: 15,
+  bowledLbwPts: 4,
+  runOutPts: 10,
+  stumpingPts: 10,
+  chaseFinisherPts: 10,
+}
+
+function scoringRates(context: MvpMatchContext): MvpScoringRates {
+  return context.shortFormat ? MVP_RATES_SHORT : MVP_RATES_STANDARD
 }
 
 /** Point components returned to callers / UI. Optional fields are omitted when zero. */
@@ -43,9 +78,9 @@ export type MvpScoreBreakdown = {
   battingMilestones?: number
   /** Negative when a duck penalty applies. */
   duckPenalty?: number
-  /** Base: 25 points per wicket. */
+  /** Base wicket points (25 standard, 15 for ≤15-over matches). */
   wickets?: number
-  /** +8 per Bowled or LBW dismissal credited to this bowler. */
+  /** Bowled/LBW extras (8 standard, 4 for ≤15-over matches). */
   bowledLbwBonus?: number
   /** +15 per maiden over. */
   maidens?: number
@@ -223,6 +258,7 @@ function optionalBreakdownField(key: keyof MvpScoreBreakdown, value: number): Pa
  * ```
  */
 export function computeMvpPointsForPlayer(stats: MvpPlayerStats, context: MvpMatchContext): MvpPointsResult {
+  const rates = scoringRates(context)
   const runs = clampNonNeg(stats.runs)
   const balls = clampNonNeg(stats.balls)
   const fours = clampNonNeg(stats.fours)
@@ -247,8 +283,8 @@ export function computeMvpPointsForPlayer(stats: MvpPlayerStats, context: MvpMat
   const batting =
     runPts + fourPts + sixPts + srBonus + milestone + duckPenalty
 
-  const baseWicketPts = 25 * wickets
-  const bowledLbwExtra = countBowledLbwExtras(stats.dismissalTypes ?? [], wickets) * 8
+  const baseWicketPts = rates.wicketPts * wickets
+  const bowledLbwExtra = countBowledLbwExtras(stats.dismissalTypes ?? [], wickets) * rates.bowledLbwPts
   const maidenPts = maidenOvers * 15
   const economy = calculateEconomy(runsConceded, oversBowled)
   const econBonus = getEconomyBonus(economy, oversBowled)
@@ -257,8 +293,8 @@ export function computeMvpPointsForPlayer(stats: MvpPlayerStats, context: MvpMat
   const bowling = baseWicketPts + bowledLbwExtra + maidenPts + econBonus + wkMilestone
 
   const catchPts = catches * 8
-  const roPts = runOuts * 12
-  const stumpPts = stumpings * 12
+  const roPts = runOuts * rates.runOutPts
+  const stumpPts = stumpings * rates.stumpingPts
   const fielding = catchPts + roPts + stumpPts
 
   let impact = 0
@@ -272,7 +308,7 @@ export function computeMvpPointsForPlayer(stats: MvpPlayerStats, context: MvpMat
   const dismissed = stats.dismissedPlayerIds ?? []
   if (topId && dismissed.includes(topId)) impact += 8
 
-  if (stats.matchFinishingInnings) impact += 15
+  if (stats.matchFinishingInnings) impact += rates.chaseFinisherPts
 
   const total = batting + bowling + fielding + impact
 

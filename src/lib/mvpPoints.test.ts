@@ -5,6 +5,7 @@ import {
   computeMvpPointsForPlayer,
   getEconomyBonus,
   getStrikeRateBonus,
+  isShortFormatMvp,
   type MvpMatchContext,
   type MvpPlayerStats,
 } from './mvpPoints'
@@ -67,6 +68,19 @@ describe('getEconomyBonus', () => {
   })
   it('best economy tier only', () => {
     expect(getEconomyBonus(4.5, 3)).toBe(20)
+  })
+})
+
+describe('isShortFormatMvp', () => {
+  it('is true for 15 overs and below', () => {
+    expect(isShortFormatMvp(15)).toBe(true)
+    expect(isShortFormatMvp(10)).toBe(true)
+    expect(isShortFormatMvp(5)).toBe(true)
+  })
+  it('is false above 15 overs', () => {
+    expect(isShortFormatMvp(16)).toBe(false)
+    expect(isShortFormatMvp(20)).toBe(false)
+    expect(isShortFormatMvp(50)).toBe(false)
   })
 })
 
@@ -146,5 +160,23 @@ describe('computeMvpPointsForPlayer', () => {
       emptyCtx(),
     )
     expect(r.total).toBe(0)
+  })
+
+  it('uses reduced wicket, fielding, and finisher rates for short format', () => {
+    const ctx: MvpMatchContext = { winningTeamId: 'win', topScorerPlayerId: 'top', shortFormat: true }
+    const r = computeMvpPointsForPlayer(
+      baseStats({
+        teamId: 'win',
+        wickets: 2,
+        dismissalTypes: ['Bowled', 'LBW'],
+        runOuts: 1,
+        stumpings: 1,
+        matchFinishingInnings: true,
+      }),
+      ctx,
+    )
+    expect(r.bowling).toBe(15 * 2 + 4 * 2 + 10) // includes 2-wicket milestone
+    expect(r.fielding).toBe(10 + 10)
+    expect(r.impact).toBe(15 + 10) // win + chase finisher only
   })
 })

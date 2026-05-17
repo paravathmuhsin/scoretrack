@@ -97,13 +97,14 @@ export function MatchFormPage() {
   const [squadSize, setSquadSize] = useState(DEFAULT_SQUAD_SIZE)
   const [oversLimit, setOversLimit] = useState(20)
   const [oversPerBowler, setOversPerBowler] = useState(4)
-  const [scheduleMode, setScheduleMode] = useState<'now' | 'later'>(() => (isEdit ? 'later' : 'now'))
+  const [scheduleMode, setScheduleMode] = useState<'now' | 'later'>(() => 'later')
   const [scheduledAt, setScheduledAt] = useState(() => {
     const d = new Date()
     d.setMinutes(d.getMinutes() - d.getTimezoneOffset())
     return d.toISOString().slice(0, 16)
   })
   const [isPublic, setIsPublic] = useState(true)
+  const [freeHitOnNoBall, setFreeHitOnNoBall] = useState(false)
   const [venue, setVenue] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [fixtureMode, setFixtureMode] = useState<MatchStatus | 'loading' | null>(null)
@@ -206,6 +207,7 @@ export function MatchFormPage() {
       setOversLimit(m.oversLimit)
       setOversPerBowler(m.oversPerBowler ?? 4)
       setIsPublic(m.isPublic)
+      setFreeHitOnNoBall(m.freeHitOnNoBall === true)
       setVenue(typeof m.venue === 'string' ? m.venue : '')
       if (m.scheduledAt && 'toDate' in m.scheduledAt) {
         const d = m.scheduledAt.toDate()
@@ -300,8 +302,8 @@ export function MatchFormPage() {
           return
         }
         if (m.status === 'live') {
-          if (squadSize < 2 || squadSize > 30) {
-            setError('Players per team must be between 2 and 30.')
+          if (squadSize < 2 || squadSize > 15) {
+            setError('Players per team must be between 2 and 15.')
             return
           }
           if (oversLimit < 1 || oversLimit > 400) {
@@ -350,10 +352,11 @@ export function MatchFormPage() {
           const payload: {
             isPublic: boolean
             venue: string | null
+            freeHitOnNoBall: boolean
             squadSize?: number
             oversLimit?: number
             oversPerBowler?: number
-          } = { isPublic, venue: venueField }
+          } = { isPublic, venue: venueField, freeHitOnNoBall }
           if (constraintsOk) {
             payload.squadSize = squadSize
             payload.oversLimit = oversLimit
@@ -369,7 +372,7 @@ export function MatchFormPage() {
             return
           }
           const venueField = m.tournamentId ? null : venue.trim() || null
-          await run(() => updateDoc(ref, { isPublic, venue: venueField }))
+          await run(() => updateDoc(ref, { isPublic, venue: venueField, freeHitOnNoBall }))
           nav(`/app/matches/${id}/score`)
           return
         }
@@ -433,8 +436,8 @@ export function MatchFormPage() {
         away = buildSnapshotFromUserTeam(tb)
       }
 
-      if (squadSize < 2 || squadSize > 30) {
-        setError('Players per team must be between 2 and 30.')
+      if (squadSize < 2 || squadSize > 15) {
+        setError('Players per team must be between 2 and 15.')
         return
       }
 
@@ -477,6 +480,7 @@ export function MatchFormPage() {
             ballsPerOver: 6,
             scheduledAt: Timestamp.fromDate(scheduled),
             isPublic,
+            freeHitOnNoBall,
             venue: venueField,
             ...(tournamentMeta ?? {}),
           }),
@@ -496,6 +500,7 @@ export function MatchFormPage() {
             status: 'scheduled',
             createdBy: user.uid,
             isPublic,
+            freeHitOnNoBall,
             publicId,
             lastEventSeq: 0,
             createdAt: serverTimestamp(),
@@ -597,6 +602,8 @@ export function MatchFormPage() {
             setScheduledAt={setScheduledAt}
             isPublic={isPublic}
             setIsPublic={setIsPublic}
+            freeHitOnNoBall={freeHitOnNoBall}
+            setFreeHitOnNoBall={setFreeHitOnNoBall}
             canSubmit={canSubmit}
             writePending={writePending}
             error={error}
@@ -752,6 +759,8 @@ export function MatchFormPage() {
           setScheduledAt={setScheduledAt}
           isPublic={isPublic}
           setIsPublic={setIsPublic}
+          freeHitOnNoBall={freeHitOnNoBall}
+          setFreeHitOnNoBall={setFreeHitOnNoBall}
           canSubmit={canSubmit}
           writePending={writePending}
           error={error}

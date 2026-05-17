@@ -125,8 +125,8 @@ export function TournamentNewPage() {
     }
 
     const nSquad = Number.parseInt(defaultSquadSize, 10)
-    if (!errs.defaultSquadSize && (!Number.isFinite(nSquad) || nSquad < 2 || nSquad > 30)) {
-      errs.defaultSquadSize = 'Enter a number between 2 and 30.'
+    if (!errs.defaultSquadSize && (!Number.isFinite(nSquad) || nSquad < 2 || nSquad > 15)) {
+      errs.defaultSquadSize = 'Enter a number between 2 and 15.'
     }
 
     const nOvers = Number.parseInt(defaultOversLimit, 10)
@@ -249,7 +249,7 @@ export function TournamentNewPage() {
               id="tournament-squad"
               type="number"
               min={2}
-              max={30}
+              max={15}
               step={1}
               value={defaultSquadSize}
               onChange={(e) => {

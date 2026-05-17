@@ -174,12 +174,16 @@ export function TournamentLeaderboardTab({ tournamentId, tournament, teamLabel, 
     </div>
   )
 
+  const tournamentEnded = Boolean(tournament.tournamentOutcome)
+
   return (
     <div className={cn(publicListing && 'tournament-stat-tab tournament-stat-tab--public tournament-leaderboard-tab')}>
       {publicListing ? null : <h2 className="tabs-panel-heading">Leaderboard</h2>}
-      <p className={publicListing ? 'tournament-stat-intro' : 'muted small'}>
-        Stats are filled after matches complete and you run <strong>Recompute</strong> on the Point table tab. Fielding lists catches, run-outs, and stumpings credited from ball-by-ball data (combined).
-      </p>
+      {!tournamentEnded && (
+        <p className={publicListing ? 'tournament-stat-intro' : 'muted small'}>
+          Stats are filled after matches complete and you run <strong>Recompute</strong> on the Point table tab. Fielding lists catches, run-outs, and stumpings credited from ball-by-ball data (combined).
+        </p>
+      )}
       <div
         className={cn('row', publicListing && 'tournament-stat-filters')}
         style={publicListing ? undefined : { gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1rem' }}

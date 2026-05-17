@@ -27,3 +27,8 @@ export function teamAvatarLabel(team: Pick<MatchTeamSnapshot, 'name' | 'shortNam
   }
   return (nameParts[0] ?? '?').slice(0, 2).toUpperCase()
 }
+
+/** Avatar text for tournament team cards — uses `shortName` when set, else initials from `name`. */
+export function tournTeamCardAvatarLabel(team: Pick<MatchTeamSnapshot, 'name' | 'shortName'>): string {
+  return teamAvatarLabel(team)
+}

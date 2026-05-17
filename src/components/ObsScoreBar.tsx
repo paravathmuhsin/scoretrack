@@ -74,7 +74,8 @@ const BOWLER_FLASH_MS = 3000
 function bowlerFlashLabel(cue: ScoreBarBallCue): string {
   if (cue === 'four') return 'FOUR'
   if (cue === 'six') return 'SIX!'
-  return 'WICKET!'
+  if (cue === 'wicket') return 'WICKET!'
+  return 'FREE HIT'
 }
 
 function currentRunRate(innRuns: number, legalBalls: number, ballsPerOver: number): string {
@@ -169,7 +170,7 @@ export function ObsScoreBar({ match, cfg, state, events }: Props) {
     }
     prevBallSeqRef.current = ballSeqEffective
 
-    const cue = lastBallScoreBarCue(cfg, events)
+    const cue = lastBallScoreBarCue(cfg, events, match.freeHitOnNoBall === true)
     if (!cue) return
 
     if (bowlerFlashHideTimerRef.current) {

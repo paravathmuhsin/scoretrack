@@ -59,6 +59,10 @@ import {
   appendUndo,
   scoreEventFromFirestore,
 } from '../lib/matchEvents'
+import {
+  freeHitPendingBeforeNextBall,
+  lastScoredBallForInningsSide,
+} from '../lib/overlayScoreBarCue'
 import { humanizeResultForMatch } from '../lib/humanizeResultText'
 import { matchCompleteHeadline, matchCompleteScoreLines } from '../lib/matchSummaryText'
 import { scoreLinePartsForSide } from '../lib/scoreLineFormat'
@@ -163,6 +167,30 @@ function buildScoreWicketPayload(
     w.fielderName = nameFor(match, fielderId)
   }
   return w
+}
+
+const MIN_STANDALONE_PLAYING_SQUAD = 2
+
+/** Tournament fixtures require exactly `squadSize` per side; standalone matches allow `squadSize` as a cap with a minimum of 2. */
+function playingSquadSelectionError(
+  tournamentId: string | null,
+  squadSize: number,
+  homeLen: number,
+  awayLen: number,
+): string | null {
+  if (tournamentId) {
+    if (homeLen !== squadSize || awayLen !== squadSize) {
+      return `Select exactly ${squadSize} players for each team.`
+    }
+    return null
+  }
+  if (homeLen < MIN_STANDALONE_PLAYING_SQUAD || awayLen < MIN_STANDALONE_PLAYING_SQUAD) {
+    return `Select at least ${MIN_STANDALONE_PLAYING_SQUAD} players for each team.`
+  }
+  if (homeLen > squadSize || awayLen > squadSize) {
+    return `Select at most ${squadSize} players for each team.`
+  }
+  return null
 }
 
 function StartMatchSquadSection({
@@ -415,6 +443,73 @@ export function ScoreMatchPage() {
     return replayEvents(cfg, events)
   }, [cfg, events])
 
+  const pendingFreeHitNextDelivery = useMemo(() => {
+    if (!match?.freeHitOnNoBall || match.status !== 'live' || !state || !cfg) return false
+    const inn = currentInnings(state)
+    return freeHitPendingBeforeNextBall(events, inn.innings, inn.battingSide, match.freeHitOnNoBall === true)
+  }, [match?.freeHitOnNoBall, match?.status, state, cfg, events])
+
+  /** Fall-of-wicket modal: only Run out when free-hit applies or any runs scored on this ball (> 0). */
+  const wicketFallOnlyRunOut = useMemo(() => {
+    const runs = pendingRunsFromPad ?? 0
+    return pendingFreeHitNextDelivery || runs > 0
+  }, [pendingFreeHitNextDelivery, pendingRunsFromPad])
+
+  /** Wide + wicket (and not run-out-only mode): only Run out or Stumping. */
+  const wideWicketRunOutOrStumpingOnly = useMemo(
+    () => chkWide && chkWicket && !wicketFallOnlyRunOut,
+    [chkWide, chkWicket, wicketFallOnlyRunOut],
+  )
+
+  /** Warn once per scored wide/no-ball while free-hit is still pending (until a legal delivery). */
+  const lastFreeHitWarningBallSeqRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (!match?.freeHitOnNoBall || match.status !== 'live' || !state || !cfg) {
+      lastFreeHitWarningBallSeqRef.current = null
+      return
+    }
+    const inn = currentInnings(state)
+    const pending = freeHitPendingBeforeNextBall(
+      events,
+      inn.innings,
+      inn.battingSide,
+      match.freeHitOnNoBall === true,
+    )
+    if (!pending) {
+      lastFreeHitWarningBallSeqRef.current = null
+      return
+    }
+    const meta = lastScoredBallForInningsSide(events, inn.innings, inn.battingSide)
+    if (!meta || (meta.delivery !== 'wide' && meta.delivery !== 'noball')) return
+    if (lastFreeHitWarningBallSeqRef.current === meta.seq) return
+    lastFreeHitWarningBallSeqRef.current = meta.seq
+    toast.warning('Free hit', { duration: 4000 })
+  }, [match, state, cfg, events])
+
+  /** Keep dismissal type valid: run-out-only, or wide+wicket → Run out / Stumping only. */
+  useEffect(() => {
+    if (!wicketOpen || wicketModalMode !== 'score' || !state) return
+    const inn = currentInnings(state)
+    if (wicketFallOnlyRunOut) {
+      if (wFallKind === 'Run out') return
+      setWFallKind('Run out')
+      setWDismiss(dismissedDefaultForFallKind(inn, 'Run out'))
+      return
+    }
+    if (wideWicketRunOutOrStumpingOnly) {
+      if (wFallKind === 'Run out' || wFallKind === 'Stumping') return
+      setWFallKind('Stumping')
+      setWDismiss(dismissedDefaultForFallKind(inn, 'Stumping'))
+    }
+  }, [
+    wicketOpen,
+    wicketModalMode,
+    wicketFallOnlyRunOut,
+    wideWicketRunOutOrStumpingOnly,
+    state,
+    wFallKind,
+  ])
+
   const thisOverSymbols = useMemo(() => {
     if (!cfg) return []
     return symbolsThisOver(cfg, events)
@@ -477,9 +572,13 @@ export function ScoreMatchPage() {
   /** Used for Go live enabled state and shared with submit validation. */
   const startMatchBlockingReason = useMemo(() => {
     if (!match || match.status !== 'scheduled') return null
-    if (homePick.length !== match.squadSize || awayPick.length !== match.squadSize) {
-      return `Select exactly ${match.squadSize} players for each XI.`
-    }
+    const squadErr = playingSquadSelectionError(
+      match.tournamentId,
+      match.squadSize,
+      homePick.length,
+      awayPick.length,
+    )
+    if (squadErr) return squadErr
     if (!homeCaptainId || !homeKeeperId || !awayCaptainId || !awayKeeperId) {
       return 'Choose captain and wicket-keeper for both teams.'
     }
@@ -632,8 +731,14 @@ export function ScoreMatchPage() {
     setError(null)
     if (!match) return
     if (startMatchWizardStep === 1) {
-      if (homePick.length !== match.squadSize || awayPick.length !== match.squadSize) {
-        toast.error(`Select exactly ${match.squadSize} players for each XI.`)
+      const squadErr = playingSquadSelectionError(
+        match.tournamentId,
+        match.squadSize,
+        homePick.length,
+        awayPick.length,
+      )
+      if (squadErr) {
+        toast.error(squadErr)
         return
       }
     }
@@ -736,9 +841,15 @@ export function ScoreMatchPage() {
       setPendingRunsFromPad(runs)
       setWicketModalMode('score')
       const inn = currentInnings(state)
-      setWFallKind('Bowled')
+      const initialKind: WicketFallKind =
+        pendingFreeHitNextDelivery || runs > 0
+          ? 'Run out'
+          : chkWide
+            ? 'Stumping'
+            : 'Bowled'
+      setWFallKind(initialKind)
       setWFielderId('')
-      setWDismiss(dismissedDefaultForFallKind(inn, 'Bowled'))
+      setWDismiss(dismissedDefaultForFallKind(inn, initialKind))
       setWNew('')
       setWicketModalError(null)
       setWicketOpen(true)
@@ -959,6 +1070,7 @@ export function ScoreMatchPage() {
           events,
           potmResult,
           existingCareer,
+          po,
         )
         await batch.commit()
       }
@@ -3153,7 +3265,14 @@ export function ScoreMatchPage() {
                       aria-required="true"
                     >
                       {WICKET_FALL_OPTIONS.map((o) => (
-                        <option key={o} value={o}>
+                        <option
+                          key={o}
+                          value={o}
+                          disabled={
+                            (wicketFallOnlyRunOut && o !== 'Run out') ||
+                            (wideWicketRunOutOrStumpingOnly && o !== 'Run out' && o !== 'Stumping')
+                          }
+                        >
                           {o}
                         </option>
                       ))}
@@ -3327,6 +3446,24 @@ export function ScoreMatchPage() {
                           missing.length === 1
                             ? `Fill in: ${missing[0]}`
                             : `Fill in: ${missing.join(' · ')}`,
+                        )
+                        return
+                      }
+                      if (wFallKind !== 'Run out' && wicketFallOnlyRunOut) {
+                        setWicketModalError(
+                          pendingFreeHitNextDelivery && !chkWide && !chkNoBall
+                            ? 'On a free hit, only run out can dismiss a batter.'
+                            : 'With runs on this ball, only run out can dismiss a batter.',
+                        )
+                        return
+                      }
+                      if (
+                        wideWicketRunOutOrStumpingOnly &&
+                        wFallKind !== 'Run out' &&
+                        wFallKind !== 'Stumping'
+                      ) {
+                        setWicketModalError(
+                          'On a wide with wicket, only run out or stumping can dismiss a batter.',
                         )
                         return
                       }
