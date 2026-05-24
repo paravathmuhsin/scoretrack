@@ -1,5 +1,5 @@
 import { Eye, EyeOff, Lock, Mail, ShieldCheck } from 'lucide-react'
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { getAuthErrorMessage } from '../auth/authErrors'
@@ -9,10 +9,11 @@ import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Separator } from '../components/ui/separator'
 import { BtnPendingLabel } from '../components/Spinner'
+import { usesNativeGoogleRedirect } from '../auth/googleSignIn'
 import { safePostAuthPath, withRedirectQuery } from '../lib/safeRedirect'
 
 export function LoginPage() {
-  const { signIn, signInWithGoogle, sendPasswordReset } = useAuth()
+  const { signIn, signInWithGoogle, sendPasswordReset, user, loading } = useAuth()
   const nav = useNavigate()
   const [searchParams] = useSearchParams()
   const redirectAfterAuth = safePostAuthPath(searchParams.get('redirect'))
@@ -23,6 +24,13 @@ export function LoginPage() {
   const [emailBusy, setEmailBusy] = useState(false)
   const [resetBusy, setResetBusy] = useState(false)
   const authBusy = googleBusy || emailBusy || resetBusy
+
+  useEffect(() => {
+    if (!loading && user && googleBusy) {
+      setGoogleBusy(false)
+      nav(redirectAfterAuth, { replace: true })
+    }
+  }, [loading, user, googleBusy, nav, redirectAfterAuth])
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -40,12 +48,19 @@ export function LoginPage() {
   async function onGoogleSignIn() {
     setGoogleBusy(true)
     try {
-      await signInWithGoogle()
-      nav(redirectAfterAuth, { replace: true })
+      const cred = await signInWithGoogle()
+      if (usesNativeGoogleRedirect()) {
+        return
+      }
+      if (cred) {
+        nav(redirectAfterAuth, { replace: true })
+      }
     } catch (err) {
       toast.error(getAuthErrorMessage(err))
     } finally {
-      setGoogleBusy(false)
+      if (!usesNativeGoogleRedirect()) {
+        setGoogleBusy(false)
+      }
     }
   }
 

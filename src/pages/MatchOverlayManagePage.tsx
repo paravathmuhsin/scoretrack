@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import { getDb } from '../firebase/config'
 import { usePendingWrites } from '../hooks/usePendingWrites'
 import { ensureMatchPublicId } from '../lib/ensureMatchPublicId'
+import { publicAppUrl } from '../lib/publicAppUrl'
 import {
   DEFAULT_OVERLAY_PREVIEW_DURATION_SEC,
   overlayPreviewDurationSec,
@@ -70,7 +71,7 @@ export function MatchOverlayManagePage() {
   }
 
   const publicUrl = match.publicId?.trim()
-    ? `${typeof window !== 'undefined' ? window.location.origin : ''}/overlay/${match.publicId}`
+    ? publicAppUrl(`/overlay/${match.publicId}`)
     : ''
 
   const effectiveSec = overlayPreviewDurationSec(match)

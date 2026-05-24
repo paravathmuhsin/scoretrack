@@ -31,6 +31,8 @@ import {
 } from '../lib/publicLiveAnalytics'
 import type { MatchDoc, Side } from '../types/models'
 import { scorecardPdfDownloadFileName } from '../lib/scorecardPdfNaming'
+import { publicAppUrl } from '../lib/publicAppUrl'
+import { shareLink } from '../lib/shareLink'
 import { Share2 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -201,31 +203,13 @@ export function PublicLiveScorecardDetail({ match, cfg, state, events }: Props) 
   }
 
   async function shareLiveMatchLink() {
-    const url = `${window.location.origin}/live/${match.publicId}`
+    const url = publicAppUrl(`/live/${match.publicId}`)
     const title = `${match.home.name} vs ${match.away.name}`
     const text = `Follow this match: ${title}`
 
-    if (typeof navigator.share === 'function') {
-      const payloads: ShareData[] = [
-        { title, text, url },
-        { title, url },
-        { text, url },
-        { url },
-      ]
-      for (const data of payloads) {
-        try {
-          if (typeof navigator.canShare === 'function' && !navigator.canShare(data)) continue
-          await navigator.share(data)
-          return
-        } catch (err) {
-          if (err instanceof DOMException && err.name === 'AbortError') return
-        }
-      }
-    }
-
     try {
-      await navigator.clipboard.writeText(url)
-      toast.success('Link copied')
+      const result = await shareLink({ url, title, text })
+      if (result === 'copied') toast.success('Link copied')
     } catch {
       toast.error('Could not share or copy link')
     }

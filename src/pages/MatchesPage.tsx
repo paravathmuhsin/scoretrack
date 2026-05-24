@@ -133,8 +133,6 @@ function MyMatchCard({ m, onRequestDelete }: { m: Row; onRequestDelete?: () => v
           {m.status === 'live' && m.publicId && (
             <Link
               to={`/live/${m.publicId}`}
-              target="_blank"
-              rel="noreferrer"
               className="mt-1 inline-flex items-center gap-1.5 text-sm font-semibold !text-emerald-600 hover:!text-emerald-700 hover:underline"
             >
               <BarChart3 className="size-4 shrink-0" strokeWidth={2.2} aria-hidden />
@@ -198,8 +196,6 @@ function MyMatchCard({ m, onRequestDelete }: { m: Row; onRequestDelete?: () => v
               {m.publicId ? (
                 <Link
                   to={`/live/${m.publicId}`}
-                  target="_blank"
-                  rel="noreferrer"
                   className={cn(
                     buttonVariants({ variant: 'outline', size: 'sm' }),
                     'h-9 w-full justify-center gap-1.5 border-2 border-primary bg-white font-semibold !text-primary shadow-none hover:bg-primary/5 hover:!no-underline',

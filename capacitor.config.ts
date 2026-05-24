@@ -6,6 +6,9 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   server: {
     androidScheme: 'https',
+    /** WebView origin; must match Android App Links + Firebase Auth redirect host. */
+    hostname: 'scoretrackonline.com',
+    iosScheme: 'capacitor',
   },
 }
 

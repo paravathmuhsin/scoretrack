@@ -1,10 +1,8 @@
 import {
   createUserWithEmailAndPassword,
-  GoogleAuthProvider,
   onAuthStateChanged,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
-  signInWithPopup,
   signOut,
   updateProfile,
 } from 'firebase/auth'
@@ -17,8 +15,7 @@ import { MOBILE_TEN_DIGIT_MSG, normalizeOptionalTenDigitMobile } from '../lib/ph
 import { MAX_DISPLAY_NAME_LEN, MIN_PROFILE_NAME_LEN } from '../lib/profileComplete'
 import type { UserProfileDoc } from '../types/models'
 import { AuthContext, type AuthContextValue } from './context'
-
-const googleProvider = new GoogleAuthProvider()
+import { completeGoogleRedirectIfNeeded, signInWithGoogle as runGoogleSignIn } from './googleSignIn'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthContextValue['user']>(null)
@@ -26,7 +23,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const auth = getFirebaseAuth()
-    return onAuthStateChanged(auth, async (u) => {
+    let cancelled = false
+
+    void (async () => {
+      try {
+        await completeGoogleRedirectIfNeeded(auth)
+      } catch (e) {
+        console.warn('[ScoreTrack] Google redirect result error.', e)
+      }
+      if (cancelled) return
+    })()
+
+    const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u)
       if (!u) {
         setLoading(false)
@@ -92,6 +100,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(false)
       }
     })
+
+    return () => {
+      cancelled = true
+      unsub()
+    }
   }, [])
 
   const value = useMemo<AuthContextValue>(
@@ -105,7 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await sendPasswordResetEmail(getFirebaseAuth(), email)
       },
       async signInWithGoogle() {
-        await signInWithPopup(getFirebaseAuth(), googleProvider)
+        return runGoogleSignIn(getFirebaseAuth())
       },
       async signUp(email, password, fullName, displayName, mobile) {
         const fn = fullName.trim()

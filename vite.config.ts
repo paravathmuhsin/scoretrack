@@ -15,6 +15,17 @@ export default defineConfig({
       '@': path.resolve(projectRoot, 'src'),
     },
   },
+  build: {
+    watch: null,
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-pdf': ['@react-pdf/renderer'],
+        },
+      },
+    },
+  },
   test: {
     globals: true,
     environment: 'jsdom',

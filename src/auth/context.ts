@@ -6,7 +6,7 @@ export type AuthContextValue = {
   loading: boolean
   signIn: (email: string, password: string) => Promise<void>
   sendPasswordReset: (email: string) => Promise<void>
-  signInWithGoogle: () => Promise<void>
+  signInWithGoogle: () => Promise<import('firebase/auth').UserCredential | null | void>
   signUp: (
     email: string,
     password: string,

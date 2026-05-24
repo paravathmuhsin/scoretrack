@@ -9,6 +9,7 @@ import { UserTeamForm } from '../components/UserTeamForm'
 import { Spinner } from '../components/Spinner'
 import { usePendingWrites } from '../hooks/usePendingWrites'
 import { getDb } from '../firebase/config'
+import { publicAppUrl } from '../lib/publicAppUrl'
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -35,8 +36,8 @@ export function UserTeamEditPage() {
   const [inviteBusy, setInviteBusy] = useState(false)
 
   const invitationUrl = useMemo(() => {
-    if (!team?.joinInviteToken || typeof window === 'undefined') return ''
-    return `${window.location.origin}/app/join/team/${team.joinInviteToken}`
+    if (!team?.joinInviteToken) return ''
+    return publicAppUrl(`/app/join/team/${team.joinInviteToken}`)
   }, [team?.joinInviteToken])
 
   async function ensureInviteLink() {
@@ -286,7 +287,9 @@ export function UserTeamEditPage() {
                   className="h-11 min-w-0 flex-1 rounded-xl font-semibold sm:flex-initial"
                   disabled={!invitationUrl}
                   onClick={() => {
-                    window.open(invitationUrl, '_blank', 'noopener,noreferrer')
+                    if (team?.joinInviteToken) {
+                      nav(`/app/join/team/${team.joinInviteToken}`)
+                    }
                   }}
                 >
                   <ExternalLink className="mr-2 size-4 shrink-0" strokeWidth={2.2} aria-hidden />

@@ -1,0 +1,20 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "REPLACE_WITH_APPLE_TEAM_ID.com.scoretrack.app",
+        "paths": [
+          "/live/*",
+          "/overlay/*",
+          "/player/*",
+          "/tournaments/*",
+          "/app/*",
+          "/login",
+          "/register",
+          "/*"
+        ]
+      }
+    ]
+  }
+}

@@ -16,16 +16,27 @@
     "firebase:deploy:hosting": "npm run build && firebase deploy --only hosting",
     "firebase:deploy:rules": "firebase deploy --only firestore:rules,firestore:indexes",
     "cap:sync": "npm run build && npx cap sync",
+    "cap:sync:ios": "npm run build && npx cap sync ios",
     "cap:copy": "npx cap copy",
     "cap:open:ios": "npx cap open ios",
-    "cap:open:android": "npx cap open android"
+    "cap:open:android": "npx cap open android",
+    "cap:android:keystore": "bash scripts/setup-android-release-keystore.sh",
+    "cap:android:firebase": "bash scripts/fetch-google-services.sh",
+    "cap:assets": "npx capacitor-assets generate --iconBackgroundColor \"#ffffff\" --splashBackgroundColor \"#ffffff\"",
+    "cap:android:sha": "bash scripts/register-android-sha.sh",
+    "cap:well-known": "bash scripts/generate-well-known.sh",
+    "cap:build:android": "npm run cap:sync && cd android && ./gradlew assembleDebug",
+    "cap:build:android:release": "npm run cap:android:keystore && npm run cap:sync && cd android && ./gradlew assembleRelease",
+    "cap:build:ios": "npm run cap:sync:ios && npx cap open ios"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
     "@capacitor/android": "^8.3.1",
+    "@capacitor/app": "^8.1.0",
     "@capacitor/cli": "^8.3.1",
     "@capacitor/core": "^8.3.1",
     "@capacitor/ios": "^8.3.1",
+    "@capacitor/share": "^8.0.1",
     "@fontsource-variable/geist": "^5.2.8",
     "@radix-ui/react-slot": "^1.2.4",
     "@react-pdf/renderer": "^4.5.1",
@@ -44,6 +55,7 @@
     "uuid": "^14.0.0"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
     "@eslint/js": "^10.0.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

@@ -1349,8 +1349,6 @@ export function TournamentDetailPage() {
                               <Link
                                 className="public-tournament-match-foot-link"
                                 to={`/live/${m.publicId}`}
-                                target="_blank"
-                                rel="noreferrer"
                               >
                                 View scorecard
                               </Link>

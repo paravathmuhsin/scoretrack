@@ -36,7 +36,7 @@ import {
   X,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useAuth } from '../auth/useAuth'
 import { matchFormSelectClass } from '../components/MatchFormCreateFields'
@@ -78,6 +78,7 @@ import { advanceKnockoutFixture } from '../lib/advanceKnockoutFixture'
 import { recomputeTournament } from '../lib/recomputeTournament'
 import { getDb } from '../firebase/config'
 import { ensureMatchPublicId } from '../lib/ensureMatchPublicId'
+import { publicAppUrl } from '../lib/publicAppUrl'
 import { buildSnapshotFromUserTeam } from '../lib/userTeamSnapshot'
 import {
   battersYetToPlayIds,
@@ -193,6 +194,20 @@ function playingSquadSelectionError(
   return null
 }
 
+/** Playing XI options for one side; one entry per playerId (avoids duplicate roster rows). */
+function playingSquadPlayers(match: MatchDoc, side: Side, pick: string[]): RosterPlayer[] {
+  const pickSet = new Set(pick)
+  const pool = side === 'home' ? match.home.players : match.away.players
+  const seen = new Set<string>()
+  const out: RosterPlayer[] = []
+  for (const p of pool) {
+    if (!pickSet.has(p.playerId) || seen.has(p.playerId)) continue
+    seen.add(p.playerId)
+    out.push(p)
+  }
+  return out
+}
+
 function StartMatchSquadSection({
   teamName,
   players,
@@ -281,6 +296,7 @@ function StartMatchSquadSection({
 
 export function ScoreMatchPage() {
   const { id } = useParams()
+  const nav = useNavigate()
   const { user } = useAuth()
   const [match, setMatch] = useState<(MatchDoc & { id: string }) | null>(null)
   const [events, setEvents] = useState<ScoreEvent[]>([])
@@ -1210,8 +1226,7 @@ export function ScoreMatchPage() {
 
   const overlayPublicUrl = useMemo(() => {
     if (!effectivePublicId) return ''
-    const origin = typeof window !== 'undefined' ? window.location.origin : ''
-    return `${origin}/overlay/${effectivePublicId}`
+    return publicAppUrl(`/overlay/${effectivePublicId}`)
   }, [effectivePublicId])
 
   if (!id) return <p>Missing id</p>
@@ -1515,7 +1530,9 @@ export function ScoreMatchPage() {
                 type="button"
                 className="h-11 min-w-0 flex-1 rounded-xl font-semibold sm:flex-initial"
                 onClick={() => {
-                  window.open(overlayPublicUrl, '_blank', 'noopener,noreferrer')
+                  if (effectivePublicId) {
+                    nav(`/overlay/${effectivePublicId}`)
+                  }
                 }}
               >
                 <ExternalLink className="mr-2 size-4 shrink-0" strokeWidth={2.2} aria-hidden />
@@ -1949,8 +1966,11 @@ export function ScoreMatchPage() {
                   >
                     <option value="">Select player</option>
                     {batFirstSide &&
-                      [...match.home.players, ...match.away.players]
-                        .filter((p) => (batFirstSide === 'home' ? homePick : awayPick).includes(p.playerId))
+                      playingSquadPlayers(
+                        match,
+                        batFirstSide,
+                        batFirstSide === 'home' ? homePick : awayPick,
+                      )
                         .filter((p) => p.playerId !== nonStrikerId)
                         .map((p) => (
                           <option key={p.playerId} value={p.playerId}>
@@ -1984,8 +2004,11 @@ export function ScoreMatchPage() {
                   >
                     <option value="">Select player</option>
                     {batFirstSide &&
-                      [...match.home.players, ...match.away.players]
-                        .filter((p) => (batFirstSide === 'home' ? homePick : awayPick).includes(p.playerId))
+                      playingSquadPlayers(
+                        match,
+                        batFirstSide,
+                        batFirstSide === 'home' ? homePick : awayPick,
+                      )
                         .filter((p) => p.playerId !== strikerId)
                         .map((p) => (
                           <option key={p.playerId} value={p.playerId}>
@@ -2015,8 +2038,11 @@ export function ScoreMatchPage() {
                   >
                     <option value="">Select player</option>
                     {batFirstSide &&
-                      [...match.home.players, ...match.away.players]
-                        .filter((p) => (batFirstSide === 'home' ? awayPick : homePick).includes(p.playerId))
+                      playingSquadPlayers(
+                        match,
+                        opp(batFirstSide),
+                        batFirstSide === 'home' ? awayPick : homePick,
+                      )
                         .map((p) => (
                           <option key={p.playerId} value={p.playerId}>
                             {p.name}
