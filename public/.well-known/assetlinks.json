@@ -7,7 +7,8 @@
       "namespace": "android_app",
       "package_name": "com.scoretrack.app",
       "sha256_cert_fingerprints": [
-        "6B:9A:75:57:43:91:36:96:04:CB:B0:7B:7F:5E:4D:98:63:B2:E6:88:71:90:1B:E6:DD:09:C0:9B:4B:A1:C7:FE"
+        "6B:9A:75:57:43:91:36:96:04:CB:B0:7B:7F:5E:4D:98:63:B2:E6:88:71:90:1B:E6:DD:09:C0:9B:4B:A1:C7:FE",
+        "78:8C:B5:1A:4C:BF:33:31:C7:99:87:CF:19:B3:6C:23:33:AE:6F:AB:44:ED:9D:CC:9D:15:6A:35:B6:1B:E7:B1"
       ]
     }
   }

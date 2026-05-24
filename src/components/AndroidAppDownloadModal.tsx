@@ -12,12 +12,13 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import {
   ANDROID_APK_FILE_NAME,
   getAndroidApkDownloadUrl,
   isAndroidApkDownloadEnabled,
 } from '../lib/androidApkDownload'
-import { isAndroidAppInstalled, openInAppUrl } from '../lib/openInAppUrl'
+import { launchAndroidApp, resolveAndroidAppInstalled } from '../lib/openInAppUrl'
 
 const DISMISS_KEY = 'st-android-apk-modal-dismissed'
 const SHOW_DELAY_MS = 3000
@@ -32,6 +33,12 @@ function shouldOfferAndroidApkDownload(): boolean {
   return true
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms)
+  })
+}
+
 /** Prompts Android browser visitors to install or open the app after a short delay. */
 export function AndroidAppDownloadModal() {
   const [open, setOpen] = useState(false)
@@ -41,18 +48,26 @@ export function AndroidAppDownloadModal() {
     if (!shouldOfferAndroidApkDownload()) return
 
     let cancelled = false
-    void isAndroidAppInstalled().then((installed) => {
-      if (!cancelled) setAppInstalled(installed)
-    })
 
-    const timer = window.setTimeout(() => {
-      if (!shouldOfferAndroidApkDownload()) return
+    void (async () => {
+      const [, installed] = await Promise.all([delay(SHOW_DELAY_MS), resolveAndroidAppInstalled()])
+      if (cancelled || !shouldOfferAndroidApkDownload()) return
+      setAppInstalled(installed)
       setOpen(true)
-    }, SHOW_DELAY_MS)
+    })()
+
+    const refreshInstalled = () => {
+      if (document.visibilityState !== 'visible') return
+      void resolveAndroidAppInstalled().then((installed) => {
+        if (!cancelled) setAppInstalled(installed)
+      })
+    }
+
+    document.addEventListener('visibilitychange', refreshInstalled)
 
     return () => {
       cancelled = true
-      window.clearTimeout(timer)
+      document.removeEventListener('visibilitychange', refreshInstalled)
     }
   }, [])
 
@@ -62,12 +77,16 @@ export function AndroidAppDownloadModal() {
   }
 
   function openApp() {
-    window.location.assign(openInAppUrl(window.location.href))
+    launchAndroidApp(window.location.href)
     dismiss()
   }
 
-  const primaryButtonClassName =
-    '!text-primary-foreground no-underline hover:!text-primary-foreground hover:no-underline visited:!text-primary-foreground'
+  const actionButtonClassName =
+    'min-h-[50px] h-12 w-full rounded-xl text-base font-semibold'
+  const primaryButtonClassName = cn(
+    actionButtonClassName,
+    '!text-primary-foreground no-underline hover:!text-primary-foreground hover:no-underline visited:!text-primary-foreground',
+  )
 
   return (
     <AlertDialog
@@ -90,10 +109,7 @@ export function AndroidAppDownloadModal() {
               : 'Install the Android app for faster access, live scoring, and a better experience than the browser.'}
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel type="button" onClick={dismiss}>
-            Not now
-          </AlertDialogCancel>
+        <AlertDialogFooter className="!flex-col gap-2 sm:!flex-col sm:!justify-stretch">
           {appInstalled ? (
             <Button type="button" className={primaryButtonClassName} onClick={openApp}>
               Open app
@@ -113,6 +129,9 @@ export function AndroidAppDownloadModal() {
               Download app
             </Button>
           )}
+          <AlertDialogCancel type="button" className={actionButtonClassName} onClick={dismiss}>
+            Not now
+          </AlertDialogCancel>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
