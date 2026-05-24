@@ -3,7 +3,8 @@ import { useEffect } from 'react'
 import { getDb } from '../firebase/config'
 import type { MatchDoc, TournamentDoc } from '../types/models'
 
-export const SCORETRACK_DEFAULT_DOCUMENT_TITLE = 'ScoreTrack — live scores'
+export const SCORETRACK_DEFAULT_DOCUMENT_TITLE =
+  'ScoreTrack — Live Cricket Scores, Tournaments & OBS Overlays'
 
 function formatMatchDetailsTitle(homeName: string, awayName: string, location: string): string {
   const a = homeName.trim() || 'Home'

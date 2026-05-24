@@ -1,6 +1,7 @@
 {
-  "name": "ScoreTrack",
+  "name": "ScoreTrack — Live Cricket Scores",
   "short_name": "ScoreTrack",
+  "description": "Live cricket scoring for local clubs and tournaments with ball-by-ball scorecards, stats, and OBS overlays.",
   "icons": [
     {
       "src": "/web-app-manifest-192x192.png",

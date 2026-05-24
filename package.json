@@ -27,6 +27,8 @@
     "cap:well-known": "bash scripts/generate-well-known.sh",
     "cap:build:android": "npm run cap:sync && cd android && ./gradlew assembleDebug",
     "cap:build:android:release": "npm run cap:android:keystore && npm run cap:sync && cd android && ./gradlew assembleRelease",
+    "cap:release:android": "bash scripts/android-release.sh patch",
+    "cap:release:android:minor": "bash scripts/android-release.sh minor",
     "cap:build:ios": "npm run cap:sync:ios && npx cap open ios"
   },
   "dependencies": {

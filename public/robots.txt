@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+Allow: /tournaments
+Allow: /live/
+Allow: /player/
+
+Disallow: /app/
+Disallow: /login
+Disallow: /register
+Disallow: /overlay/
+Disallow: /__/auth/
+
+Sitemap: https://scoretrackonline.com/sitemap.xml
