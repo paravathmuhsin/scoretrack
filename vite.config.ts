@@ -18,13 +18,6 @@ export default defineConfig({
   build: {
     watch: null,
     sourcemap: false,
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          'react-pdf': ['@react-pdf/renderer'],
-        },
-      },
-    },
   },
   test: {
     globals: true,
