@@ -12,12 +12,18 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
-import { ANDROID_APK_FILE_NAME, ANDROID_APK_PATH } from '../lib/androidApkDownload'
+import {
+  ANDROID_APK_FILE_NAME,
+  getAndroidApkDownloadUrl,
+  isAndroidApkDownloadEnabled,
+} from '../lib/androidApkDownload'
+import { isAndroidAppInstalled, openInAppUrl } from '../lib/openInAppUrl'
 
 const DISMISS_KEY = 'st-android-apk-modal-dismissed'
 const SHOW_DELAY_MS = 3000
 
 function shouldOfferAndroidApkDownload(): boolean {
+  if (!isAndroidApkDownloadEnabled()) return false
   if (Capacitor.isNativePlatform()) return false
   if (typeof window === 'undefined') return false
   if (sessionStorage.getItem(DISMISS_KEY) === '1') return false
@@ -26,25 +32,42 @@ function shouldOfferAndroidApkDownload(): boolean {
   return true
 }
 
-/** Prompts Android browser visitors to install the app after a short delay. */
+/** Prompts Android browser visitors to install or open the app after a short delay. */
 export function AndroidAppDownloadModal() {
   const [open, setOpen] = useState(false)
+  const [appInstalled, setAppInstalled] = useState(false)
 
   useEffect(() => {
     if (!shouldOfferAndroidApkDownload()) return
+
+    let cancelled = false
+    void isAndroidAppInstalled().then((installed) => {
+      if (!cancelled) setAppInstalled(installed)
+    })
 
     const timer = window.setTimeout(() => {
       if (!shouldOfferAndroidApkDownload()) return
       setOpen(true)
     }, SHOW_DELAY_MS)
 
-    return () => window.clearTimeout(timer)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
   }, [])
 
   function dismiss() {
     sessionStorage.setItem(DISMISS_KEY, '1')
     setOpen(false)
   }
+
+  function openApp() {
+    window.location.assign(openInAppUrl(window.location.href))
+    dismiss()
+  }
+
+  const primaryButtonClassName =
+    '!text-primary-foreground no-underline hover:!text-primary-foreground hover:no-underline visited:!text-primary-foreground'
 
   return (
     <AlertDialog
@@ -58,29 +81,38 @@ export function AndroidAppDownloadModal() {
           <AlertDialogMedia className="bg-primary/10 text-primary">
             <Smartphone className="size-5" aria-hidden />
           </AlertDialogMedia>
-          <AlertDialogTitle>Get the ScoreTrack app</AlertDialogTitle>
+          <AlertDialogTitle>
+            {appInstalled ? 'Open ScoreTrack app' : 'Get the ScoreTrack app'}
+          </AlertDialogTitle>
           <AlertDialogDescription>
-            Install the Android app for faster access, live scoring, and a better experience than
-            the browser.
+            {appInstalled
+              ? 'ScoreTrack is installed on your device. Open the app for faster access and live scoring.'
+              : 'Install the Android app for faster access, live scoring, and a better experience than the browser.'}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel type="button" onClick={dismiss}>
             Not now
           </AlertDialogCancel>
-          <Button
-            type="button"
-            className="!text-primary-foreground no-underline hover:!text-primary-foreground hover:no-underline visited:!text-primary-foreground"
-            render={
-              <a
-                href={ANDROID_APK_PATH}
-                download={ANDROID_APK_FILE_NAME}
-                onClick={dismiss}
-              />
-            }
-          >
-            Download app
-          </Button>
+          {appInstalled ? (
+            <Button type="button" className={primaryButtonClassName} onClick={openApp}>
+              Open app
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              className={primaryButtonClassName}
+              render={
+                <a
+                  href={getAndroidApkDownloadUrl()}
+                  download={ANDROID_APK_FILE_NAME}
+                  onClick={dismiss}
+                />
+              }
+            >
+              Download app
+            </Button>
+          )}
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

@@ -3,6 +3,8 @@ import { PUBLIC_APP_DOMAIN } from './appDomain'
 
 const ANDROID_PACKAGE = 'com.scoretrack.app'
 
+export { ANDROID_PACKAGE }
+
 export function isMobileWebBrowser(): boolean {
   if (typeof navigator === 'undefined') return false
   return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
@@ -44,4 +46,22 @@ export function shouldOfferOpenInApp(): boolean {
   if (!isMobileWebBrowser()) return false
   if (typeof window === 'undefined') return false
   return isShareablePublicPath(window.location.pathname)
+}
+
+/** True when Chrome detects the Android app via Digital Asset Links (installed + verified). */
+export async function isAndroidAppInstalled(): Promise<boolean> {
+  if (typeof navigator === 'undefined') return false
+  if (!/Android/i.test(navigator.userAgent)) return false
+  if (!('getInstalledRelatedApps' in navigator)) return false
+
+  try {
+    const apps = await (
+      navigator as Navigator & {
+        getInstalledRelatedApps: () => Promise<Array<{ id?: string; platform?: string }>>
+      }
+    ).getInstalledRelatedApps()
+    return apps.some((app) => app.id === ANDROID_PACKAGE)
+  } catch {
+    return false
+  }
 }
