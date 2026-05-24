@@ -21,7 +21,8 @@ APPS_JSON="$(firebase apps:list --project "$PROJECT_ID" --json 2>/dev/null || tr
 APP_ID=""
 if [[ -n "$APPS_JSON" ]]; then
   APP_ID="$(node -e "
-    const apps = JSON.parse(process.argv[1]).result?.apps ?? [];
+    const data = JSON.parse(process.argv[1]);
+    const apps = Array.isArray(data.result) ? data.result : (data.result?.apps ?? []);
     const android = apps.find(a => a.platform === 'ANDROID' && a.namespace === process.argv[2]);
     if (android) process.stdout.write(android.appId);
   " "$APPS_JSON" "$PACKAGE_NAME" 2>/dev/null || true)"
@@ -38,6 +39,9 @@ if [[ -z "$APP_ID" ]]; then
 fi
 
 echo "Downloading google-services.json..."
+if [[ -f "$OUT" ]]; then
+  rm "$OUT"
+fi
 firebase apps:sdkconfig ANDROID "$APP_ID" \
   --project "$PROJECT_ID" \
   --out "$OUT"

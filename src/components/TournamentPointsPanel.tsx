@@ -88,12 +88,8 @@ export function TournamentPointsPanel({ tournamentId: id, variant = 'embedded' }
       const blob = await pdf(
         <StatsPdfDocument tournamentName={tournament.name} standings={standings} />,
       ).toBlob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `points-${id}.pdf`
-      a.click()
-      URL.revokeObjectURL(url)
+      const { downloadBlob } = await import('../lib/downloadBlob')
+      await downloadBlob(blob, `points-${id}.pdf`)
     } finally {
       setExportPending(false)
     }

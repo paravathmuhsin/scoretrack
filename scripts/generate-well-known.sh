@@ -9,15 +9,15 @@ OUT_DIR="$ROOT/public/.well-known"
 PACKAGE="com.scoretrack.app"
 APPLE_TEAM_ID="${APPLE_TEAM_ID:-}"
 
-sha256_no_colons() {
+sha256_fingerprint() {
   keytool -list -v -keystore "$1" -alias "$2" -storepass "$3" -keypass "$3" 2>/dev/null \
-    | awk -F': ' '/SHA256:/{gsub(/:/,"",$2); print $2; exit}'
+    | awk -F': ' '/SHA256:/{print $2; exit}'
 }
 
 FINGERPRINTS=()
 
 if [[ -f "$HOME/.android/debug.keystore" ]]; then
-  FP="$(sha256_no_colons "$HOME/.android/debug.keystore" androiddebugkey android || true)"
+  FP="$(sha256_fingerprint "$HOME/.android/debug.keystore" androiddebugkey android || true)"
   [[ -n "$FP" ]] && FINGERPRINTS+=("$FP")
 fi
 
@@ -26,7 +26,7 @@ PROPS="$ROOT/android/keystore.properties"
 if [[ -f "$RELEASE_KS" && -f "$PROPS" ]]; then
   # shellcheck disable=SC1090
   source <(grep -E '^(storePassword|keyAlias)=' "$PROPS" | sed 's/\r$//')
-  FP="$(sha256_no_colons "$RELEASE_KS" "${keyAlias:-scoretrack}" "$storePassword" || true)"
+  FP="$(sha256_fingerprint "$RELEASE_KS" "${keyAlias:-scoretrack}" "$storePassword" || true)"
   [[ -n "$FP" ]] && FINGERPRINTS+=("$FP")
 fi
 

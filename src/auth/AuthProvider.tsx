@@ -9,13 +9,14 @@ import {
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { syncPlayerCareerProfileNames } from '../lib/syncPlayerCareerProfileNames'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { toast } from 'sonner'
 import { directoryFieldsForUser } from './userDirectory'
 import { getDb, getFirebaseAuth } from '../firebase/config'
 import { MOBILE_TEN_DIGIT_MSG, normalizeOptionalTenDigitMobile } from '../lib/phoneDigits'
 import { MAX_DISPLAY_NAME_LEN, MIN_PROFILE_NAME_LEN } from '../lib/profileComplete'
 import type { UserProfileDoc } from '../types/models'
 import { AuthContext, type AuthContextValue } from './context'
-import { completeGoogleRedirectIfNeeded, signInWithGoogle as runGoogleSignIn } from './googleSignIn'
+import { signInWithGoogle as runGoogleSignIn } from './googleSignIn'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthContextValue['user']>(null)
@@ -23,17 +24,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const auth = getFirebaseAuth()
-    let cancelled = false
-
-    void (async () => {
-      try {
-        await completeGoogleRedirectIfNeeded(auth)
-      } catch (e) {
-        console.warn('[ScoreTrack] Google redirect result error.', e)
-      }
-      if (cancelled) return
-    })()
-
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u)
       if (!u) {
@@ -102,7 +92,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
 
     return () => {
-      cancelled = true
       unsub()
     }
   }, [])
@@ -249,6 +238,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       async logout() {
         await signOut(getFirebaseAuth())
+        toast.success('Signed out')
       },
     }),
     [user, loading],

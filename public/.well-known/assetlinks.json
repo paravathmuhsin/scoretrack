@@ -1,12 +1,13 @@
 [
   {
-    "relation": ["delegate_permission/common.handle_all_urls"],
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
     "target": {
       "namespace": "android_app",
       "package_name": "com.scoretrack.app",
       "sha256_cert_fingerprints": [
-        "4094BD8BB995E22CC01ECD948DF0A7550451C9F26FA95CF8E03C10C4C6FED232",
-        "6B9A75574391369604CBB07B7F5E4D9863B2E68871901BE6DD09C09B4B4A1C7FE"
+        "6B:9A:75:57:43:91:36:96:04:CB:B0:7B:7F:5E:4D:98:63:B2:E6:88:71:90:1B:E6:DD:09:C0:9B:4B:A1:C7:FE"
       ]
     }
   }

@@ -189,12 +189,8 @@ export function PublicLiveScorecardDetail({ match, cfg, state, events }: Props) 
       const blob = await pdf(
         <ScorecardPdfDocument match={match} state={state} cfg={cfg} events={events} />,
       ).toBlob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = scorecardPdfDownloadFileName(match)
-      a.click()
-      URL.revokeObjectURL(url)
+      const { downloadBlob } = await import('../lib/downloadBlob')
+      await downloadBlob(blob, scorecardPdfDownloadFileName(match))
     } catch (err) {
       setPdfError(err instanceof Error ? err.message : 'Could not export PDF')
     } finally {

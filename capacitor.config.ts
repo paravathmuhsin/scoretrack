@@ -10,6 +10,12 @@ const config: CapacitorConfig = {
     hostname: 'scoretrackonline.com',
     iosScheme: 'capacitor',
   },
+  plugins: {
+    FirebaseAuthentication: {
+      authDomain: 'scoretrackonline.com',
+      providers: ['google.com'],
+    },
+  },
 }
 
 export default config

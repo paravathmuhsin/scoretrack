@@ -20,17 +20,19 @@
             </intent-filter>
 
             <!-- App Links + Firebase Auth redirect (Capacitor hostname) -->
+            <!-- Apex only: www must serve assetlinks.json before adding a second intent-filter -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="scoretrackonline.com" />
             </intent-filter>
-            <intent-filter android:autoVerify="true">
+            <!-- http links (e.g. typed or old shares); not auto-verified -->
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="www.scoretrackonline.com" />
+                <data android:scheme="http" android:host="scoretrackonline.com" />
             </intent-filter>
         </activity>
 

@@ -1,6 +1,10 @@
 import { FirebaseError } from 'firebase/app'
 
 export function getAuthErrorMessage(err: unknown): string {
+  const message = err instanceof Error ? err.message : ''
+  if (/no credentials available/i.test(message)) {
+    return 'No Google account found. Add a Google account in device Settings, then try again.'
+  }
   if (err instanceof FirebaseError) {
     switch (err.code) {
       case 'auth/invalid-credential':
@@ -14,6 +18,8 @@ export function getAuthErrorMessage(err: unknown): string {
         return 'Pop-up was blocked. Allow pop-ups for this site and try again.'
       case 'auth/redirect-cancelled-by-user':
         return 'Sign-in was cancelled.'
+      case 'auth/argument-error':
+        return 'Sign-in could not start. Update the app and try again.'
       case 'auth/unauthorized-domain':
         return 'This app is not authorized for sign-in. Contact support if this continues.'
       case 'auth/account-exists-with-different-credential':

@@ -11,6 +11,7 @@ import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/useAuth";
+import { APP_VERSION } from "../lib/appVersion";
 import { Separator } from "@/components/ui/separator";
 import {
   Sheet,
@@ -64,7 +65,7 @@ function MobileAccountDrawer({
         side="right"
         showCloseButton
         className={cn(
-          "gap-0 overflow-y-auto rounded-none rounded-l-3xl border-l border-border bg-white p-0 shadow-2xl",
+          "flex flex-col gap-0 overflow-y-auto rounded-none rounded-l-3xl border-l border-border bg-white p-0 shadow-2xl",
           "w-[min(85vw,320px)] max-w-none sm:max-w-none",
           "data-[side=right]:w-[min(85vw,320px)] data-[side=right]:max-w-none",
         )}
@@ -73,7 +74,7 @@ function MobileAccountDrawer({
           <SheetTitle>Account menu</SheetTitle>
         </SheetHeader>
 
-        <div className="flex flex-col px-6 pb-8 pt-12">
+        <div className="flex min-h-full flex-1 flex-col px-6 pb-8 pt-12">
           <div className="flex flex-col items-center border-b border-slate-200 pb-6">
             <div
               className="flex h-[72px] w-[72px] items-center justify-center rounded-full bg-slate-100 text-xl font-semibold tracking-tight text-slate-600"
@@ -160,6 +161,10 @@ function MobileAccountDrawer({
             <LogOut className="size-5 shrink-0" strokeWidth={2.2} aria-hidden />
             Logout
           </button>
+
+          <p className="mt-auto pt-6 text-center text-xs text-slate-400">
+            Version {APP_VERSION}
+          </p>
         </div>
       </SheetContent>
     </Sheet>

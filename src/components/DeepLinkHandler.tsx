@@ -17,7 +17,8 @@ export function DeepLinkHandler() {
 
     const open = (rawUrl: string) => {
       const path = pathFromDeepLinkUrl(rawUrl)
-      if (path) navigateToPath(path)
+      if (!path) return
+      navigateToPath(path)
     }
 
     void App.getLaunchUrl().then((result) => {

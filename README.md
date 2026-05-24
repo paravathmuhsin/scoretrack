@@ -1,4 +1,21 @@
-# React + TypeScript + Vite
+# ScoreTrack
+
+Live cricket score tracking — React + TypeScript + Vite, Firebase, and Capacitor (iOS/Android).
+
+## Android Firebase setup
+
+After cloning or on a new machine, configure Firebase for the Android app:
+
+```bash
+npm run cap:android:firebase   # downloads google-services.json
+npm run cap:android:sha        # prints SHA-1 to add in Firebase if needed
+```
+
+Then rebuild: `npm run cap:build:android`
+
+---
+
+## React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
