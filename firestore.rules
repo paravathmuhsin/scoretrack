@@ -10,12 +10,37 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/matches/$(mid)).data;
     }
 
-    /** Public score/events can be read without auth when the match is public. */
+    function matchRosterVisibleToAuth(mid) {
+      return authed() && request.auth.uid in matchData(mid).rosterPlayerIds;
+    }
+
+    function matchParentSquadVisibleToAuth(mid) {
+      return authed() && request.auth.uid in matchData(mid).parentTeamMemberIds;
+    }
+
+    function matchRosterVisibleOnResource() {
+      return authed() && request.auth.uid in resource.data.rosterPlayerIds;
+    }
+
+    function matchParentSquadVisibleOnResource() {
+      return authed() && request.auth.uid in resource.data.parentTeamMemberIds;
+    }
+
+    /** Public score/events can be read without auth when the match is public or has a live share link. */
+    function matchHasLivePublicId(data) {
+      return data.keys().hasAny(['publicId'])
+        && data.publicId is string
+        && data.publicId.size() > 0;
+    }
+
     function canAccessMatchSubcollection(mid) {
       return exists(/databases/$(database)/documents/matches/$(mid))
         && (
           matchData(mid).isPublic == true
+          || matchHasLivePublicId(matchData(mid))
           || (authed() && matchData(mid).createdBy == request.auth.uid)
+          || matchRosterVisibleToAuth(mid)
+          || matchParentSquadVisibleToAuth(mid)
         );
     }
 
@@ -74,6 +99,33 @@ service cloud.firestore {
       return exists(/databases/$(database)/documents/users/$(uid)/teams/$(teamId));
     }
 
+    /** Squad owner may maintain `users/{memberUid}/accessibleSquads` index rows for their team. */
+    function squadOwnerMaintainsMemberAccessibleSquad(ownerUid, teamId) {
+      return authed()
+        && request.auth.uid == ownerUid
+        && userTeamDocExistsFor(ownerUid, teamId);
+    }
+
+    function accessibleSquadOwnerWrite() {
+      return request.resource.data.ownerUid is string
+        && request.resource.data.teamId is string
+        && request.resource.data.teamName is string
+        && request.resource.data.role == 'member'
+        && squadOwnerMaintainsMemberAccessibleSquad(
+          request.resource.data.ownerUid,
+          request.resource.data.teamId,
+        );
+    }
+
+    function accessibleSquadOwnerDelete() {
+      return resource.data.ownerUid is string
+        && resource.data.teamId is string
+        && squadOwnerMaintainsMemberAccessibleSquad(
+          resource.data.ownerUid,
+          resource.data.teamId,
+        );
+    }
+
     function userTeamJoinInviteData(token) {
       return get(/databases/$(database)/documents/userTeamJoinInvites/$(token)).data;
     }
@@ -117,6 +169,12 @@ service cloud.firestore {
         allow get: if authed() && request.auth.uid == uid
           || (
             authed()
+            && resource.data.keys().hasAny(['memberIds'])
+            && resource.data.memberIds is list
+            && request.auth.uid in resource.data.memberIds
+          )
+          || (
+            authed()
             && resource.data.keys().hasAny(['joinInviteToken'])
             && resource.data.joinInviteToken is string
             && exists(/databases/$(database)/documents/userTeamJoinInvites/$(resource.data.joinInviteToken))
@@ -143,6 +201,14 @@ service cloud.firestore {
             && request.resource.data.players[resource.data.players.size()].name is string
             && request.resource.data.players[resource.data.players.size()].name.size() > 0
           );
+      }
+
+      match /accessibleSquads/{docId} {
+        allow read: if authed() && request.auth.uid == uid;
+        allow create, update: if authed() && request.auth.uid == uid
+          || accessibleSquadOwnerWrite();
+        allow delete: if authed() && request.auth.uid == uid
+          || accessibleSquadOwnerDelete();
       }
     }
 
@@ -199,12 +265,16 @@ service cloud.firestore {
 
     match /matches/{mid} {
       /**
-       * Public matches readable by anyone (for /live list & shared links).
-       * Private matches: creator, or tournament organiser for that match's tournament.
+       * Public matches readable by anyone (for home listing & shared links).
+       * Any match with a `publicId` is readable via `/live/:publicId` without sign-in.
+       * Private listing: creator, tournament organiser, squad, or parent squad.
        */
       allow read: if resource.data.isPublic == true
+        || matchHasLivePublicId(resource.data)
         || (authed() && resource.data.createdBy == request.auth.uid)
-        || tournamentOrganiserReadsThisMatch();
+        || tournamentOrganiserReadsThisMatch()
+        || matchRosterVisibleOnResource()
+        || matchParentSquadVisibleOnResource();
 
       allow create: if authed() && request.resource.data.createdBy == request.auth.uid;
 

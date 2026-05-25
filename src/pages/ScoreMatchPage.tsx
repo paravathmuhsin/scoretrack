@@ -26,6 +26,7 @@ import {
   Plus,
   RefreshCw,
   Settings,
+  Share2,
   Shirt,
   Trophy,
   User,
@@ -79,6 +80,9 @@ import { recomputeTournament } from '../lib/recomputeTournament'
 import { getDb } from '../firebase/config'
 import { ensureMatchPublicId } from '../lib/ensureMatchPublicId'
 import { publicAppUrl } from '../lib/publicAppUrl'
+import { shareLink } from '../lib/shareLink'
+import { internalMatchSidesOverlap, rosterPlayersFromIds } from '../lib/internalMatchRoster'
+import { buildRosterPlayerIds } from '../lib/matchRosterIndex'
 import { buildSnapshotFromUserTeam } from '../lib/userTeamSnapshot'
 import {
   battersYetToPlayIds,
@@ -194,10 +198,26 @@ function playingSquadSelectionError(
   return null
 }
 
+function matchSideRosterPool(
+  match: MatchDoc,
+  side: Side,
+  internalParentPlayers: RosterPlayer[],
+): RosterPlayer[] {
+  if (match.isInternalMatch && internalParentPlayers.length > 0) {
+    return internalParentPlayers
+  }
+  return side === 'home' ? match.home.players : match.away.players
+}
+
 /** Playing XI options for one side; one entry per playerId (avoids duplicate roster rows). */
-function playingSquadPlayers(match: MatchDoc, side: Side, pick: string[]): RosterPlayer[] {
+function playingSquadPlayers(
+  match: MatchDoc,
+  side: Side,
+  pick: string[],
+  internalParentPlayers: RosterPlayer[],
+): RosterPlayer[] {
   const pickSet = new Set(pick)
-  const pool = side === 'home' ? match.home.players : match.away.players
+  const pool = matchSideRosterPool(match, side, internalParentPlayers)
   const seen = new Set<string>()
   const out: RosterPlayer[] = []
   for (const p of pool) {
@@ -316,6 +336,7 @@ export function ScoreMatchPage() {
   const [awayCaptainId, setAwayCaptainId] = useState('')
   const [awayKeeperId, setAwayKeeperId] = useState('')
   const [startMatchWizardStep, setStartMatchWizardStep] = useState(0)
+  const [internalParentPlayers, setInternalParentPlayers] = useState<RosterPlayer[]>([])
 
   const [i2striker, setI2striker] = useState('')
   const [i2non, setI2non] = useState('')
@@ -380,12 +401,30 @@ export function ScoreMatchPage() {
   /** Until Firestore snapshot catches up after assigning `publicId`. */
   const [optimisticOverlayPublicId, setOptimisticOverlayPublicId] = useState<string | null>(null)
   const [overlayPublicIdBusy, setOverlayPublicIdBusy] = useState(false)
+  const [shareLinkBusy, setShareLinkBusy] = useState(false)
   /** '' = automatic MVP pick; else XI player id (synced from match doc). */
   const [potmDraft, setPotmDraft] = useState('')
 
   useEffect(() => {
     setStartMatchWizardStep(0)
   }, [id])
+
+  useEffect(() => {
+    const ref = match?.parentUserTeamRef
+    if (!match?.isInternalMatch || !ref?.ownerUid || !ref?.teamId) {
+      setInternalParentPlayers([])
+      return
+    }
+    let cancelled = false
+    void getDoc(doc(getDb(), 'users', ref.ownerUid, 'teams', ref.teamId)).then((snap) => {
+      if (cancelled) return
+      const players = snap.exists() ? ((snap.data() as TeamDoc).players ?? []) : []
+      setInternalParentPlayers(players)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [match?.isInternalMatch, match?.parentUserTeamRef?.ownerUid, match?.parentUserTeamRef?.teamId])
 
   const inn1PopupInitRef = useRef(false)
   const prevInn1DoneRef = useRef(false)
@@ -693,6 +732,7 @@ export function ScoreMatchPage() {
   async function refreshRostersFromMyTeams() {
     if (!id || !match || !user) return
     if (match.createdBy !== user.uid) return
+    if (match.isInternalMatch) return
     const hid = match.home.userTeamId
     const aid = match.away.userTeamId
     if (!hid && !aid) {
@@ -757,6 +797,10 @@ export function ScoreMatchPage() {
         toast.error(squadErr)
         return
       }
+      if (match.isInternalMatch && internalMatchSidesOverlap(homePick, awayPick)) {
+        toast.error('A player cannot be on both sides.')
+        return
+      }
     }
     if (startMatchWizardStep === 2) {
       if (!homeCaptainId || !homeKeeperId || !awayCaptainId || !awayKeeperId) {
@@ -785,14 +829,27 @@ export function ScoreMatchPage() {
       awayKeeperId,
     }
     try {
-      await run(() =>
-        updateDoc(doc(getDb(), 'matches', id), {
-          toss,
-          lineup,
-          status: 'live',
-          startedAt: serverTimestamp(),
-        }),
-      )
+      const patch: Record<string, unknown> = {
+        toss,
+        lineup,
+        status: 'live',
+        startedAt: serverTimestamp(),
+      }
+      if (match.isInternalMatch) {
+        const pool = internalParentPlayers
+        const homePlayers = rosterPlayersFromIds(homePick, pool)
+        const awayPlayers = rosterPlayersFromIds(awayPick, pool)
+        if (internalMatchSidesOverlap(homePick, awayPick)) {
+          setError('A player cannot be on both sides.')
+          return
+        }
+        const home = { ...match.home, players: homePlayers }
+        const away = { ...match.away, players: awayPlayers }
+        patch.home = home
+        patch.away = away
+        patch.rosterPlayerIds = buildRosterPlayerIds(home, away)
+      }
+      await run(() => updateDoc(doc(getDb(), 'matches', id), patch))
       setGoLiveConfirmOpen(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not start')
@@ -1203,6 +1260,30 @@ export function ScoreMatchPage() {
     }
   }
 
+  async function shareLiveMatchLink() {
+    if (!id || !match || user?.uid !== match.createdBy) return
+    setShareLinkBusy(true)
+    try {
+      const pid = await ensureMatchPublicId(
+        doc(getDb(), 'matches', id),
+        optimisticOverlayPublicId ?? match.publicId,
+        run,
+      )
+      if (!match.publicId?.trim() && !optimisticOverlayPublicId) {
+        setOptimisticOverlayPublicId(pid)
+      }
+      const url = publicAppUrl(`/live/${pid}`)
+      const title = `${match.home.name} vs ${match.away.name}`
+      const text = `Follow this match: ${title}`
+      const result = await shareLink({ url, title, text })
+      if (result === 'copied') toast.success('Link copied')
+    } catch {
+      toast.error('Could not share or copy link')
+    } finally {
+      setShareLinkBusy(false)
+    }
+  }
+
   async function openScoreOverlayLinkModal() {
     if (!id || !match || user?.uid !== match.createdBy) return
     setOverlayPublicIdBusy(true)
@@ -1309,7 +1390,17 @@ export function ScoreMatchPage() {
         </Link>
         {(match.status === 'live' || match.status === 'completed') &&
           user?.uid === match.createdBy && (
-          <div className="score-settings">
+          <div className="score-page-actions">
+            <button
+              type="button"
+              className="score-page-share-trigger"
+              disabled={shareLinkBusy || writePending}
+              onClick={() => void shareLiveMatchLink()}
+              aria-label="Share link to this match"
+            >
+              <Share2 className="size-5" strokeWidth={2} aria-hidden />
+            </button>
+            <div className="score-settings">
             <button
               type="button"
               className="score-settings-trigger"
@@ -1440,9 +1531,10 @@ export function ScoreMatchPage() {
                 </div>
               </>
             )}
+            </div>
           </div>
         )}
-        </div>
+      </div>
       )}
       {error && <p className="error">{error}</p>}
 
@@ -1490,13 +1582,9 @@ export function ScoreMatchPage() {
 
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
               {!match.isPublic && (
-                <p className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-950">
-                  This match is <strong>private</strong>. The overlay page will show “Private” until you enable{' '}
-                  <strong>Public score</strong> in{' '}
-                  <Link to={`/app/matches/${id}/edit`} className="font-semibold text-primary underline">
-                    Match settings
-                  </Link>
-                  .
+                <p className="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700">
+                  This match is not listed on the public home page. Anyone with the live or overlay link can still view
+                  the scorecard.
                 </p>
               )}
               <label htmlFor="overlay-public-url" className="text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -1724,7 +1812,16 @@ export function ScoreMatchPage() {
           )}
           {startMatchWizardStep === 1 && (
           <>
-          {(match.home.userTeamId || match.away.userTeamId) && (
+          {match.isInternalMatch ? (
+            <p className="text-sm leading-relaxed text-slate-600">
+              Pick up to {match.squadSize} players from{' '}
+              <strong className="font-semibold text-slate-800">
+                {match.parentUserTeamRef?.name ?? 'the team'}
+              </strong>{' '}
+              for each side. A player can only be on one side.
+            </p>
+          ) : null}
+          {!match.isInternalMatch && (match.home.userTeamId || match.away.userTeamId) && (
             <>
               <div className="mb-2 space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
@@ -1766,7 +1863,7 @@ export function ScoreMatchPage() {
           )}
           <StartMatchSquadSection
             teamName={match.home.name}
-            players={match.home.players}
+            players={match.isInternalMatch ? internalParentPlayers : match.home.players}
             pick={homePick}
             squadSize={match.squadSize}
             onSelectClick={() => {
@@ -1784,7 +1881,7 @@ export function ScoreMatchPage() {
           />
           <StartMatchSquadSection
             teamName={match.away.name}
-            players={match.away.players}
+            players={match.isInternalMatch ? internalParentPlayers : match.away.players}
             pick={awayPick}
             squadSize={match.squadSize}
             onSelectClick={() => {
@@ -1830,9 +1927,7 @@ export function ScoreMatchPage() {
                     aria-label={`${match.home.name} captain`}
                   >
                     <option value="">Select player</option>
-                    {match.home.players
-                      .filter((p) => homePick.includes(p.playerId))
-                      .map((p) => (
+                    {playingSquadPlayers(match, 'home', homePick, internalParentPlayers).map((p) => (
                         <option key={p.playerId} value={p.playerId}>
                           {p.name}
                         </option>
@@ -1858,8 +1953,7 @@ export function ScoreMatchPage() {
                     aria-label={`${match.home.name} wicket-keeper`}
                   >
                     <option value="">Select player</option>
-                    {match.home.players
-                      .filter((p) => homePick.includes(p.playerId))
+                    {playingSquadPlayers(match, 'home', homePick, internalParentPlayers)
                       .map((p) => (
                         <option key={p.playerId} value={p.playerId}>
                           {p.name}
@@ -1886,9 +1980,7 @@ export function ScoreMatchPage() {
                     aria-label={`${match.away.name} captain`}
                   >
                     <option value="">Select player</option>
-                    {match.away.players
-                      .filter((p) => awayPick.includes(p.playerId))
-                      .map((p) => (
+                    {playingSquadPlayers(match, 'away', awayPick, internalParentPlayers).map((p) => (
                         <option key={p.playerId} value={p.playerId}>
                           {p.name}
                         </option>
@@ -1914,8 +2006,7 @@ export function ScoreMatchPage() {
                     aria-label={`${match.away.name} wicket-keeper`}
                   >
                     <option value="">Select player</option>
-                    {match.away.players
-                      .filter((p) => awayPick.includes(p.playerId))
+                    {playingSquadPlayers(match, 'away', awayPick, internalParentPlayers)
                       .map((p) => (
                         <option key={p.playerId} value={p.playerId}>
                           {p.name}
@@ -1970,6 +2061,7 @@ export function ScoreMatchPage() {
                         match,
                         batFirstSide,
                         batFirstSide === 'home' ? homePick : awayPick,
+                        internalParentPlayers,
                       )
                         .filter((p) => p.playerId !== nonStrikerId)
                         .map((p) => (
@@ -2008,6 +2100,7 @@ export function ScoreMatchPage() {
                         match,
                         batFirstSide,
                         batFirstSide === 'home' ? homePick : awayPick,
+                        internalParentPlayers,
                       )
                         .filter((p) => p.playerId !== strikerId)
                         .map((p) => (
@@ -2042,6 +2135,7 @@ export function ScoreMatchPage() {
                         match,
                         opp(batFirstSide),
                         batFirstSide === 'home' ? awayPick : homePick,
+                        internalParentPlayers,
                       )
                         .map((p) => (
                           <option key={p.playerId} value={p.playerId}>
@@ -2101,7 +2195,17 @@ export function ScoreMatchPage() {
           open={squadPickerSide !== null}
           onClose={() => setSquadPickerSide(null)}
           teamName={squadPickerSide === 'away' ? match.away.name : match.home.name}
-          players={squadPickerSide === 'away' ? match.away.players : match.home.players}
+          players={
+            match.isInternalMatch
+              ? internalParentPlayers.filter((p) =>
+                  squadPickerSide === 'home'
+                    ? !awayPick.includes(p.playerId)
+                    : !homePick.includes(p.playerId),
+                )
+              : squadPickerSide === 'away'
+                ? match.away.players
+                : match.home.players
+          }
           maxCount={match.squadSize}
           selectedIds={squadPickerSide === 'away' ? awayPick : homePick}
           onConfirm={(ids) => {
@@ -2180,25 +2284,25 @@ export function ScoreMatchPage() {
                     <div className="flex flex-col gap-0.5 py-2.5 first:pt-0 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
                       <dt className="text-xs font-medium text-slate-500">{match.home.name} · Captain</dt>
                       <dd className="min-w-0 max-w-full break-words text-sm font-semibold leading-snug text-slate-900 sm:max-w-[55%] sm:text-right">
-                        {nameFor(match, homeCaptainId)}
+                        {nameFor(match, homeCaptainId, internalParentPlayers)}
                       </dd>
                     </div>
                     <div className="flex flex-col gap-0.5 py-2.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
                       <dt className="text-xs font-medium text-slate-500">{match.home.name} · Wicket-keeper</dt>
                       <dd className="min-w-0 max-w-full break-words text-sm font-semibold leading-snug text-slate-900 sm:max-w-[55%] sm:text-right">
-                        {nameFor(match, homeKeeperId)}
+                        {nameFor(match, homeKeeperId, internalParentPlayers)}
                       </dd>
                     </div>
                     <div className="flex flex-col gap-0.5 py-2.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
                       <dt className="text-xs font-medium text-slate-500">{match.away.name} · Captain</dt>
                       <dd className="min-w-0 max-w-full break-words text-sm font-semibold leading-snug text-slate-900 sm:max-w-[55%] sm:text-right">
-                        {nameFor(match, awayCaptainId)}
+                        {nameFor(match, awayCaptainId, internalParentPlayers)}
                       </dd>
                     </div>
                     <div className="flex flex-col gap-0.5 py-2.5 last:pb-0 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
                       <dt className="text-xs font-medium text-slate-500">{match.away.name} · Wicket-keeper</dt>
                       <dd className="min-w-0 max-w-full break-words text-sm font-semibold leading-snug text-slate-900 sm:max-w-[55%] sm:text-right">
-                        {nameFor(match, awayKeeperId)}
+                        {nameFor(match, awayKeeperId, internalParentPlayers)}
                       </dd>
                     </div>
                   </dl>
@@ -2212,19 +2316,19 @@ export function ScoreMatchPage() {
                     <div className="flex flex-col gap-0.5 py-2.5 first:pt-0 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
                       <dt className="text-xs font-medium text-slate-500">Striker</dt>
                       <dd className="min-w-0 max-w-full break-words text-sm font-semibold leading-snug text-slate-900 sm:max-w-[55%] sm:text-right">
-                        {nameFor(match, strikerId)}
+                        {nameFor(match, strikerId, internalParentPlayers)}
                       </dd>
                     </div>
                     <div className="flex flex-col gap-0.5 py-2.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
                       <dt className="text-xs font-medium text-slate-500">Non-striker</dt>
                       <dd className="min-w-0 max-w-full break-words text-sm font-semibold leading-snug text-slate-900 sm:max-w-[55%] sm:text-right">
-                        {nameFor(match, nonStrikerId)}
+                        {nameFor(match, nonStrikerId, internalParentPlayers)}
                       </dd>
                     </div>
                     <div className="flex flex-col gap-0.5 py-2.5 last:pb-0 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
                       <dt className="text-xs font-medium text-slate-500">Opening bowler</dt>
                       <dd className="min-w-0 max-w-full break-words text-sm font-semibold leading-snug text-slate-900 sm:max-w-[55%] sm:text-right">
-                        {nameFor(match, bowlerId)}
+                        {nameFor(match, bowlerId, internalParentPlayers)}
                       </dd>
                     </div>
                   </dl>
@@ -4150,10 +4254,12 @@ function scoreBallPillClass(sym: string): string {
   return base
 }
 
-function nameFor(match: MatchDoc, pid: string) {
+function nameFor(match: MatchDoc, pid: string, rosterFallback: RosterPlayer[] = []) {
+  if (!pid) return '—'
   return (
     match.home.players.find((p) => p.playerId === pid)?.name ??
     match.away.players.find((p) => p.playerId === pid)?.name ??
+    rosterFallback.find((p) => p.playerId === pid)?.name ??
     pid
   )
 }

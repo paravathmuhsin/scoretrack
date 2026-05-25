@@ -89,6 +89,39 @@
         { "fieldPath": "tournamentId", "order": "ASCENDING" },
         { "fieldPath": "isPublic", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "matches",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isInternalMatch", "order": "ASCENDING" },
+        { "fieldPath": "parentTeamMemberIds", "arrayConfig": "CONTAINS" }
+      ]
+    },
+    {
+      "collectionGroup": "matches",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "publicId", "order": "ASCENDING" },
+        { "fieldPath": "rosterPlayerIds", "arrayConfig": "CONTAINS" }
+      ]
+    },
+    {
+      "collectionGroup": "matches",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "publicId", "order": "ASCENDING" },
+        { "fieldPath": "parentTeamMemberIds", "arrayConfig": "CONTAINS" }
+      ]
+    },
+    {
+      "collectionGroup": "matches",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "publicId", "order": "ASCENDING" },
+        { "fieldPath": "isInternalMatch", "order": "ASCENDING" },
+        { "fieldPath": "parentTeamMemberIds", "arrayConfig": "CONTAINS" }
+      ]
     }
   ],
   "fieldOverrides": []

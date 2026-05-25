@@ -11,6 +11,7 @@ import {
   type Firestore,
 } from 'firebase/firestore'
 import type { MatchDoc, TeamDoc, TournamentScheduleKind } from '../types/models'
+import { buildRosterPlayerIds } from './matchRosterIndex'
 import { buildTournamentEntrySnapshot, tbdPlaceholderSnapshot } from './tournamentMatchSnapshots'
 
 const DEFAULT_SQUAD = 11
@@ -60,6 +61,7 @@ async function createScheduledMatch(
     lastEventSeq: 0,
     createdAt: serverTimestamp(),
     tournamentFixtureLabel: args.label,
+    rosterPlayerIds: buildRosterPlayerIds(args.home, args.away),
     ...(args.fixtureSources ? { fixtureSources: args.fixtureSources } : {}),
   })
   return ref.id

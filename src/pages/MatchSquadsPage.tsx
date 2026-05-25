@@ -10,6 +10,7 @@ import { Button, buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { SQUAD_SUMMARY_TILE_LIST_CLASS } from '@/lib/playingSquadTiles'
 import { getDb } from '../firebase/config'
+import { buildRosterPlayerIds } from '../lib/matchRosterIndex'
 import type { MatchDoc, MatchLineup, RosterPlayer } from '../types/models'
 
 const MIN_PLAYERS = 2
@@ -120,9 +121,12 @@ export function MatchSquadsPage() {
     setSaving(true)
     try {
       const nextLineup = syncLineupWithRoster(match.lineup, homePlayers, awayPlayers)
+      const home = { ...match.home, players: homePlayers }
+      const away = { ...match.away, players: awayPlayers }
       await updateDoc(doc(getDb(), 'matches', id), {
-        home: { ...match.home, players: homePlayers },
-        away: { ...match.away, players: awayPlayers },
+        home,
+        away,
+        rosterPlayerIds: buildRosterPlayerIds(home, away),
         ...(nextLineup ? { lineup: nextLineup } : {}),
       })
       nav(`/app/matches/${id}/score`)

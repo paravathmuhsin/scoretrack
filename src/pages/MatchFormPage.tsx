@@ -15,6 +15,11 @@ import { ArrowLeft, Trash2 } from 'lucide-react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useAuth } from '../auth/useAuth'
+import {
+  InternalMatchCreateFields,
+  InternalMatchTypeChoice,
+  validateInternalMatchCreate,
+} from '../components/InternalMatchCreateFields'
 import { MatchFormCreateFields } from '../components/MatchFormCreateFields'
 import { MatchTeamPickerDialogContent } from '../components/MatchTeamPickerDialogContent'
 import { Spinner } from '../components/Spinner'
@@ -24,6 +29,11 @@ import { deleteMatchCascade } from '../lib/deleteMatchCascade'
 import { fetchMatchEvents } from '../lib/matchEvents'
 import { buildTournamentFixtureLabel, TOURNAMENT_ROUND_OPTIONS } from '../lib/tournamentFixtureLabel'
 import { buildTournamentEntrySnapshot } from '../lib/tournamentMatchSnapshots'
+import {
+  buildInternalMatchFields,
+  buildTemporarySideSnapshot,
+} from '../lib/internalMatchSnapshot'
+import { buildRosterPlayerIds } from '../lib/matchRosterIndex'
 import { buildSnapshotFromUserTeam } from '../lib/userTeamSnapshot'
 import {
   canEditMatchPlayingConstraints,
@@ -103,7 +113,13 @@ export function MatchFormPage() {
     d.setMinutes(d.getMinutes() - d.getTimezoneOffset())
     return d.toISOString().slice(0, 16)
   })
-  const [isPublic, setIsPublic] = useState(true)
+  const [isPublic, setIsPublic] = useState(false)
+  const [isInternalChoice, setIsInternalChoice] = useState(false)
+  const [editIsInternal, setEditIsInternal] = useState(false)
+  const [parentOwnerUid, setParentOwnerUid] = useState('')
+  const [parentTeamId, setParentTeamId] = useState('')
+  const [sideAName, setSideAName] = useState('')
+  const [sideBName, setSideBName] = useState('')
   const [freeHitOnNoBall, setFreeHitOnNoBall] = useState(false)
   const [venue, setVenue] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -207,6 +223,7 @@ export function MatchFormPage() {
       setOversLimit(m.oversLimit)
       setOversPerBowler(m.oversPerBowler ?? 4)
       setIsPublic(m.isPublic)
+      setEditIsInternal(m.isInternalMatch === true)
       setFreeHitOnNoBall(m.freeHitOnNoBall === true)
       setVenue(typeof m.venue === 'string' ? m.venue : '')
       if (m.scheduledAt && 'toDate' in m.scheduledAt) {
@@ -356,7 +373,11 @@ export function MatchFormPage() {
             squadSize?: number
             oversLimit?: number
             oversPerBowler?: number
-          } = { isPublic, venue: venueField, freeHitOnNoBall }
+          } = {
+            isPublic: m.isInternalMatch ? false : isPublic,
+            venue: venueField,
+            freeHitOnNoBall,
+          }
           if (constraintsOk) {
             payload.squadSize = squadSize
             payload.oversLimit = oversLimit
@@ -372,7 +393,13 @@ export function MatchFormPage() {
             return
           }
           const venueField = m.tournamentId ? null : venue.trim() || null
-          await run(() => updateDoc(ref, { isPublic, venue: venueField, freeHitOnNoBall }))
+          await run(() =>
+            updateDoc(ref, {
+              isPublic: m.isInternalMatch ? false : isPublic,
+              venue: venueField,
+              freeHitOnNoBall,
+            }),
+          )
           nav(`/app/matches/${id}/score`)
           return
         }
@@ -382,21 +409,40 @@ export function MatchFormPage() {
         }
       }
 
-      if (!pickA || !pickB) {
-        setError(null)
-        toast.warning('Choose home team and away team from My teams.')
-        return
-      }
-      if (pickA === pickB) {
-        setError('Home team and away team must be different squads.')
-        return
+      const creatingInternal = !isEdit && !tournamentId && isInternalChoice === true
+
+      if (creatingInternal) {
+        const internalErr = validateInternalMatchCreate({
+          parentOwnerUid,
+          parentTeamId,
+          sideAName,
+          sideBName,
+        })
+        if (internalErr) {
+          setError(internalErr)
+          return
+        }
+      } else if (!editIsInternal) {
+        if (!pickA || !pickB) {
+          setError(null)
+          toast.warning('Choose home team and away team from My teams.')
+          return
+        }
+        if (pickA === pickB) {
+          setError('Home team and away team must be different squads.')
+          return
+        }
       }
 
-      const ta = myTeams.find((t) => t.id === pickA)
-      const tb = myTeams.find((t) => t.id === pickB)
-      if (!ta || !tb) {
-        setError('Selected teams are no longer available. Refresh and pick again.')
-        return
+      let ta: (TeamDoc & { id: string }) | undefined
+      let tb: (TeamDoc & { id: string }) | undefined
+      if (!creatingInternal && !editIsInternal) {
+        ta = myTeams.find((t) => t.id === pickA)
+        tb = myTeams.find((t) => t.id === pickB)
+        if (!ta || !tb) {
+          setError('Selected teams are no longer available. Refresh and pick again.')
+          return
+        }
       }
 
       if (tournamentId) {
@@ -410,8 +456,10 @@ export function MatchFormPage() {
         }
       }
 
-      const linkIdA = tournamentId ? linkedForTournament.find((l) => l.userTeamId === pickA)?.id : undefined
-      const linkIdB = tournamentId ? linkedForTournament.find((l) => l.userTeamId === pickB)?.id : undefined
+      const linkIdA =
+        tournamentId && ta ? linkedForTournament.find((l) => l.userTeamId === pickA)?.id : undefined
+      const linkIdB =
+        tournamentId && tb ? linkedForTournament.find((l) => l.userTeamId === pickB)?.id : undefined
       if (tournamentId && (!linkIdA || !linkIdB)) {
         setError('Both squads must be linked to this tournament (Tournament → Teams).')
         return
@@ -422,19 +470,41 @@ export function MatchFormPage() {
           ? groupsForTournament.find((g) => g.id === tournamentGroupId)?.name
           : undefined
       const fixtureLabel =
-        tournamentId && tournamentRound
+        tournamentId && tournamentRound && ta && tb
           ? buildTournamentFixtureLabel(ta.name, tb.name, tournamentRound, groupName)
           : undefined
 
       let home: MatchTeamSnapshot
       let away: MatchTeamSnapshot
-      if (tournamentId && linkIdA && linkIdB) {
+      let internalExtras: ReturnType<typeof buildInternalMatchFields> | null = null
+
+      if (creatingInternal) {
+        const parentSnap = await getDoc(doc(getDb(), 'users', parentOwnerUid, 'teams', parentTeamId))
+        if (!parentSnap.exists()) {
+          setError('That squad is no longer available.')
+          return
+        }
+        const parentTeam = { id: parentSnap.id, ...(parentSnap.data() as TeamDoc) }
+        home = buildTemporarySideSnapshot(sideAName, [])
+        away = buildTemporarySideSnapshot(sideBName, [])
+        internalExtras = buildInternalMatchFields(parentOwnerUid, parentTeam, home, away)
+      } else if (tournamentId && linkIdA && linkIdB && ta && tb) {
         home = buildTournamentEntrySnapshot(ta, linkIdA)
         away = buildTournamentEntrySnapshot(tb, linkIdB)
-      } else {
+      } else if (ta && tb) {
         home = buildSnapshotFromUserTeam(ta)
         away = buildSnapshotFromUserTeam(tb)
+      } else if (isEdit && id) {
+        const cur = await getDoc(doc(getDb(), 'matches', id))
+        const m = cur.data() as MatchDoc
+        home = m.home
+        away = m.away
+      } else {
+        setError('Could not build team line-ups.')
+        return
       }
+
+      const rosterPlayerIds = buildRosterPlayerIds(home, away)
 
       if (squadSize < 2 || squadSize > 15) {
         setError('Players per team must be between 2 and 15.')
@@ -467,24 +537,28 @@ export function MatchFormPage() {
 
       const venueField = tournamentId ? null : venue.trim() || null
 
+      const saveIsPublic = internalExtras ? false : isPublic
+
       if (isEdit && id) {
         const ref = doc(getDb(), 'matches', id)
-        await run(() =>
-          updateDoc(ref, {
-            tournamentId,
-            home,
-            away,
-            squadSize,
-            oversLimit,
-            oversPerBowler,
-            ballsPerOver: 6,
-            scheduledAt: Timestamp.fromDate(scheduled),
-            isPublic,
-            freeHitOnNoBall,
-            venue: venueField,
-            ...(tournamentMeta ?? {}),
-          }),
-        )
+        const patch: Record<string, unknown> = {
+          squadSize,
+          oversLimit,
+          oversPerBowler,
+          ballsPerOver: 6,
+          scheduledAt: Timestamp.fromDate(scheduled),
+          isPublic: editIsInternal ? false : saveIsPublic,
+          freeHitOnNoBall,
+          venue: venueField,
+          rosterPlayerIds,
+          ...(tournamentMeta ?? {}),
+        }
+        if (!editIsInternal) {
+          patch.tournamentId = tournamentId
+          patch.home = home
+          patch.away = away
+        }
+        await run(() => updateDoc(ref, patch))
       } else {
         const publicId = crypto.randomUUID()
         const docRef = await run(() =>
@@ -499,13 +573,15 @@ export function MatchFormPage() {
             scheduledAt: Timestamp.fromDate(scheduled),
             status: 'scheduled',
             createdBy: user.uid,
-            isPublic,
+            isPublic: saveIsPublic,
             freeHitOnNoBall,
             publicId,
             lastEventSeq: 0,
             createdAt: serverTimestamp(),
             venue: venueField,
+            rosterPlayerIds,
             ...(tournamentMeta ?? {}),
+            ...(internalExtras ?? {}),
           }),
         )
         if (scheduleMode === 'now') {
@@ -527,11 +603,17 @@ export function MatchFormPage() {
     !tournamentId ||
     (Boolean(tournamentRound) && (tournamentRound !== 'league' || Boolean(tournamentGroupId)))
   const linkedSquadsOk = !tournamentId || linkedForTournament.length >= 2
+  const friendlyCreateReady = isInternalChoice || myTeams.length >= 2
+
   const canSubmit =
     isEdit && fixtureMode === 'loading'
       ? false
       : scheduleFormActive
-        ? (tournamentId ? linkedSquadsOk && tournamentMetaOk : myTeams.length >= 2)
+        ? tournamentId
+          ? linkedSquadsOk && tournamentMetaOk
+          : isEdit
+            ? editIsInternal || myTeams.length >= 2
+            : friendlyCreateReady
         : true
 
   const tournamentStageRoundLabel = useMemo(() => {
@@ -584,6 +666,20 @@ export function MatchFormPage() {
         </header>
 
         <form onSubmit={onSubmit} className="mt-6 space-y-4">
+          <InternalMatchTypeChoice isInternal={isInternalChoice} setIsInternal={setIsInternalChoice} />
+          <InternalMatchCreateFields
+            isInternal={isInternalChoice}
+            parentOwnerUid={parentOwnerUid}
+            parentTeamId={parentTeamId}
+            setParent={(o, t) => {
+              setParentOwnerUid(o)
+              setParentTeamId(t)
+            }}
+            sideAName={sideAName}
+            setSideAName={setSideAName}
+            sideBName={sideBName}
+            setSideBName={setSideBName}
+          />
           <MatchFormCreateFields
             pickA={pickA}
             pickB={pickB}
@@ -611,6 +707,8 @@ export function MatchFormPage() {
             friendlyVenue={venue}
             setFriendlyVenue={setVenue}
             showFriendlyVenue={!tournamentId}
+            showTeamSelection={isInternalChoice !== true}
+            showPublicToggle={isInternalChoice !== true}
           />
         </form>
 
@@ -740,6 +838,13 @@ export function MatchFormPage() {
         </div>
       )}
 
+      {editIsInternal ? (
+        <p className="mb-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600">
+          Internal match — sides and public score are fixed. Edit schedule, rules, or venue below; pick players
+          for each side when you start the match.
+        </p>
+      ) : null}
+
       <form onSubmit={onSubmit} className="mt-6 space-y-4">
         <MatchFormCreateFields
           pickA={pickA}
@@ -773,6 +878,8 @@ export function MatchFormPage() {
           friendlyVenue={venue}
           setFriendlyVenue={setVenue}
           showFriendlyVenue={!tournamentId}
+          showTeamSelection={!editIsInternal}
+          showPublicToggle={!editIsInternal}
         />
       </form>
 

@@ -16,6 +16,16 @@ export interface MatchTeamSnapshot {
   tournamentTeamId?: string
   /** Source doc id under users/{uid}/teams/{userTeamId} */
   userTeamId?: string
+  /** Internal friendly: temp side names without a linked My teams doc. */
+  isTemporarySide?: boolean
+}
+
+/** Parent squad for an internal friendly (`users/{ownerUid}/teams/{teamId}`). */
+export interface ParentUserTeamRef {
+  ownerUid: string
+  teamId: string
+  name: string
+  shortName?: string
 }
 
 export interface TossInfo {
@@ -133,6 +143,13 @@ export interface MatchDoc {
    * Prefer this over recomputing MVP for public scorecard / PDFs.
    */
   playerOfTheMatchResult?: PlayerOfTheMatchResult | null
+  /** Friendly internal squad match (temp home/away from one parent roster). */
+  isInternalMatch?: boolean
+  parentUserTeamRef?: ParentUserTeamRef
+  /** Internal only: full parent roster at create — home listing for whole squad. */
+  parentTeamMemberIds?: string[]
+  /** Union of home.players + away.players (squad roster, not playing XI). */
+  rosterPlayerIds?: string[]
 }
 
 /** Persisted effective Player of the Match after the match is completed. */
@@ -185,6 +202,8 @@ export interface MatchPlayerStatsDoc {
   wasPotm: boolean
   /** True when this player was their side’s captain in the match. */
   wasCaptain?: boolean
+  /** Set when the match is an internal friendly. */
+  parentUserTeamRef?: ParentUserTeamRef
 }
 
 /** Root `playerCareerStats/{playerId}` — rollups from every completed XI (match creator maintains). */
@@ -324,6 +343,17 @@ export interface TeamDoc {
    * themselves per Firestore rules.
    */
   joinInviteToken?: string | null
+  /** Mirror of players[].playerId for rules and membership queries. */
+  memberIds?: string[]
+}
+
+/** `users/{uid}/accessibleSquads/{ownerUid}_{teamId}` — squads the user joined as a player. */
+export interface AccessibleSquadDoc {
+  ownerUid: string
+  teamId: string
+  teamName: string
+  teamShortName?: string
+  role: 'member'
 }
 
 /** `userTeamJoinInvites/{token}` — shareable join link metadata (token equals `TeamDoc.joinInviteToken`). */

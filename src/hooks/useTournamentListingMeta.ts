@@ -1,6 +1,7 @@
 import { doc, getDoc } from 'firebase/firestore'
 import { useEffect, useMemo, useState } from 'react'
 import { getDb } from '../firebase/config'
+import { resolveMatchListingMeta } from '../lib/matchListingLabel'
 import type { MatchDoc, TournamentDoc } from '../types/models'
 
 /** Tournament name with optional venue: `Name • Location` or `Name`. */
@@ -10,17 +11,20 @@ export function formatTournamentListingMeta(t: Pick<TournamentDoc, 'name' | 'loc
   return loc ? `${name} • ${loc}` : name
 }
 
+export type TournamentListingMetaMatch = Pick<
+  MatchDoc,
+  'tournamentId' | 'tournamentFixtureLabel' | 'isInternalMatch' | 'parentUserTeamRef'
+>
+
 /**
  * Public listing header line: tournament name + optional location from Firestore,
- * or "Friendly" when the match is not tied to a tournament.
+ * "Friendly", or "Internal · {parent squad}".
  */
-export function useTournamentListingMeta(
-  match: Pick<MatchDoc, 'tournamentId' | 'tournamentFixtureLabel'>,
-): string {
-  const syncLabel = useMemo(() => {
-    if (!match.tournamentId) return 'Friendly'
-    return match.tournamentFixtureLabel?.trim() ?? ''
-  }, [match.tournamentId, match.tournamentFixtureLabel])
+export function useTournamentListingMeta(match: TournamentListingMetaMatch): string {
+  const syncLabel = useMemo(
+    () => resolveMatchListingMeta(match, null),
+    [match.tournamentId, match.tournamentFixtureLabel, match.isInternalMatch, match.parentUserTeamRef],
+  )
 
   const [resolved, setResolved] = useState<string | null>(null)
 
@@ -54,6 +58,6 @@ export function useTournamentListingMeta(
     }
   }, [match.tournamentId, match.tournamentFixtureLabel])
 
-  if (!match.tournamentId) return 'Friendly'
-  return resolved ?? syncLabel
+  if (match.tournamentId) return resolved ?? syncLabel
+  return syncLabel
 }

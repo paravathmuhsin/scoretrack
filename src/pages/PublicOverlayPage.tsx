@@ -1,7 +1,6 @@
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useParams } from 'react-router-dom'
-import { useAuth } from '../auth/useAuth'
 import { ObsBattingScorecard } from '../components/ObsBattingScorecard'
 import { ObsBowlingScorecard } from '../components/ObsBowlingScorecard'
 import { ObsMatchSummaryCard } from '../components/ObsMatchSummaryCard'
@@ -32,7 +31,6 @@ function ObsChrome({ children }: { children?: ReactNode }) {
 
 export function PublicOverlayPage() {
   const { publicId } = useParams()
-  const { user, loading: authLoading } = useAuth()
   const [match, setMatch] = useState<(MatchDoc & { id: string }) | null | undefined>(undefined)
   const [events, setEvents] = useState<ScoreEvent[]>([])
   const [nowMs, setNowMs] = useState(() => Date.now())
@@ -43,13 +41,13 @@ export function PublicOverlayPage() {
   }, [])
 
   useEffect(() => {
-    if (!publicId || authLoading) return
+    if (!publicId) return
     setMatch(undefined)
-    return subscribeMatchByPublicId(getDb(), publicId, { userId: user?.uid }, {
+    return subscribeMatchByPublicId(getDb(), publicId, {
       onMatch: (m) => setMatch(m),
       onError: () => setMatch(null),
     })
-  }, [publicId, authLoading, user?.uid])
+  }, [publicId])
 
   useEffect(() => {
     if (!match?.id || !match.lineup) return
@@ -92,7 +90,6 @@ export function PublicOverlayPage() {
     match &&
     cfg &&
     state &&
-    !authLoading &&
     match.lineup &&
     (match.status === 'live' || match.status === 'completed' || match.status === 'abandoned')
 

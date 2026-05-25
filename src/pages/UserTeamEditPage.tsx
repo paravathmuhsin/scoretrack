@@ -9,6 +9,8 @@ import { UserTeamForm } from '../components/UserTeamForm'
 import { Spinner } from '../components/Spinner'
 import { usePendingWrites } from '../hooks/usePendingWrites'
 import { getDb } from '../firebase/config'
+import { buildMemberIdsFromPlayers } from '../lib/matchRosterIndex'
+import { syncAccessibleSquadsAfterRosterChange } from '../lib/accessibleSquads'
 import { publicAppUrl } from '../lib/publicAppUrl'
 import {
   AlertDialog,
@@ -320,13 +322,16 @@ export function UserTeamEditPage() {
         submitLabel="Save changes"
         onSubmit={async (p: UserTeamFormPayload) => {
           if (!user) return
+          const prevMemberIds = buildMemberIdsFromPlayers(team.players)
           await updateDoc(doc(getDb(), 'users', user.uid, 'teams', teamId), {
             name: p.name,
             shortName: p.shortName,
             players: p.players,
             location: p.location,
             logoUrl: deleteField(),
+            memberIds: buildMemberIdsFromPlayers(p.players),
           })
+          await syncAccessibleSquadsAfterRosterChange(getDb(), user.uid, teamId, p, prevMemberIds)
           const tok = team.joinInviteToken
           if (tok) {
             await updateDoc(doc(getDb(), 'userTeamJoinInvites', tok), {

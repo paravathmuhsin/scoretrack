@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
 import { UserTeamForm } from '../components/UserTeamForm'
 import { getDb } from '../firebase/config'
+import { buildMemberIdsFromPlayers } from '../lib/matchRosterIndex'
 import { cn } from '@/lib/utils'
 import type { TeamDoc } from '../types/models'
 
@@ -48,6 +49,7 @@ export function UserTeamCreatePage() {
             shortName: p.shortName,
             players: p.players,
             location: p.location,
+            memberIds: buildMemberIdsFromPlayers(p.players),
           } satisfies TeamDoc)
           nav('/app/teams')
         }}

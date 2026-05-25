@@ -1,4 +1,4 @@
-import { ChevronDown, Mail, Phone, Plus, Search, UserPlus, X } from 'lucide-react'
+import { ChevronDown, Mail, Plus, Search, UserPlus, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { RosterPlayer } from '../types/models'
 import { canSearchDirectory, searchDirectoryUsers, type DirectoryHit } from '../lib/directorySearch'
@@ -25,13 +25,6 @@ function directoryInitials(displayName: string): string {
   if (parts.length >= 2) return (parts[0]![0]! + parts[1]![0]!).toUpperCase()
   const w = parts[0] ?? ''
   return w.slice(0, 2).toUpperCase() || '?'
-}
-
-function formatPhoneDigits(d: string | null | undefined): string {
-  if (!d) return ''
-  const x = String(d).replace(/\D/g, '')
-  if (x.length === 10) return `${x.slice(0, 3)} ${x.slice(3, 6)} ${x.slice(6)}`
-  return d
 }
 
 function hitToPlayer(h: DirectoryHit): RosterPlayer {
@@ -238,7 +231,6 @@ export function AddPlayersModal({ open, onClose, roster, onAddPlayers, maxRoster
                 const inRoster = rosterIds.has(h.uid)
                 const inStaged = stagedIds.has(h.uid)
                 const addBlocked = !canStageMore && !inStaged && !inRoster
-                const phoneLine = formatPhoneDigits(h.phoneDigits)
                 return (
                   <div
                     key={h.uid}
@@ -260,12 +252,6 @@ export function AddPlayersModal({ open, onClose, roster, onAddPlayers, maxRoster
                         <p className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-slate-500">
                           <Mail className="size-3 shrink-0 text-slate-400" aria-hidden />
                           <span className="truncate">{h.email}</span>
-                        </p>
-                      ) : null}
-                      {phoneLine ? (
-                        <p className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500">
-                          <Phone className="size-3 shrink-0 text-slate-400" aria-hidden />
-                          <span>{phoneLine}</span>
                         </p>
                       ) : null}
                       {inRoster && (

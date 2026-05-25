@@ -1,20 +1,25 @@
 import { collection, onSnapshot, query, where } from 'firebase/firestore'
 import { type ReactElement, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { useAuth } from '../auth/useAuth'
 import { LiveMatchListCard } from '../components/LiveMatchListCard'
 import { PublicUpcomingMatchCard } from '../components/PublicUpcomingMatchCard'
 import { Spinner } from '../components/Spinner'
 import { Button } from '@/components/ui/button'
 import { getDb } from '../firebase/config'
+import {
+  canViewMatchOnHome,
+  mergeHomeMatchRows,
+  type HomeMatchRow,
+} from '../lib/publicHomeMatchQueries'
 import type { MatchDoc } from '../types/models'
 
 /**
- * Public home (`/`): one Firestore query — **`where('isPublic', '==', true)`** only.
- * No `createdBy` / auth; the same documents load signed-in or anonymous (see `firestore.rules`).
- * Tabs filter and sort client-side.
+ * Public home (`/`): `isPublic` matches for everyone; signed-in users also see matches
+ * where they are on the squad roster or (internal) parent squad — merged without duplicates.
  */
 
-type Row = { id: string } & MatchDoc
+type Row = HomeMatchRow
 
 const PAGE_SIZE = 15
 
@@ -111,28 +116,40 @@ function completedMs(m: MatchDoc): number {
   return 0
 }
 
-function PublicMatchCardRow({ m }: { m: Row }) {
-  if (m.status === 'live') return <LiveMatchListCard match={m} />
-  if (m.status === 'scheduled') return <PublicUpcomingMatchCard match={m} />
-  return <LiveMatchListCard match={m} replayMode="completed" />
+function PublicMatchCardRow({ m, viewerUid }: { m: Row; viewerUid: string | undefined }) {
+  const allowPrivateReplay = canViewMatchOnHome(m, viewerUid)
+  if (m.status === 'live') {
+    return <LiveMatchListCard match={m} allowPrivateReplay={allowPrivateReplay} />
+  }
+  if (m.status === 'scheduled') {
+    return <PublicUpcomingMatchCard match={m} />
+  }
+  return (
+    <LiveMatchListCard match={m} replayMode="completed" allowPrivateReplay={allowPrivateReplay} />
+  )
 }
 
 export function PublicMatchesPage() {
+  const { user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const filter = parseFilter(searchParams.get('filter'))
 
-  const [publicRows, setPublicRows] = useState<Row[]>([])
-  const [snapshotStatus, setSnapshotStatus] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [publicOnlyRows, setPublicOnlyRows] = useState<Row[]>([])
+  const [squadRows, setSquadRows] = useState<Row[]>([])
+  const [parentRows, setParentRows] = useState<Row[]>([])
+  const [publicReady, setPublicReady] = useState(false)
+  const [squadReady, setSquadReady] = useState(false)
+  const [parentReady, setParentReady] = useState(false)
   const [snapshotError, setSnapshotError] = useState<string | null>(null)
 
   const [pageIndex, setPageIndex] = useState(0)
 
   useEffect(() => {
     setPageIndex(0)
-  }, [filter])
+  }, [filter, user?.uid])
 
   useEffect(() => {
-    setSnapshotStatus('loading')
+    setPublicReady(false)
     setSnapshotError(null)
     const qy = query(collection(getDb(), 'matches'), where('isPublic', '==', true))
     return onSnapshot(
@@ -140,18 +157,80 @@ export function PublicMatchesPage() {
       (snap) => {
         const list: Row[] = []
         snap.forEach((d) => list.push({ id: d.id, ...(d.data() as MatchDoc) }))
-        setPublicRows(list)
-        setSnapshotStatus('ready')
+        setPublicOnlyRows(list)
+        setPublicReady(true)
         setSnapshotError(null)
       },
       (err) => {
-        console.error('[PublicMatchesPage]', err)
-        setPublicRows([])
-        setSnapshotStatus('error')
+        console.error('[PublicMatchesPage] public', err)
+        setPublicOnlyRows([])
+        setPublicReady(true)
         setSnapshotError(err.message ?? 'Could not load matches.')
       },
     )
   }, [])
+
+  useEffect(() => {
+    if (!user?.uid) {
+      setSquadRows([])
+      setSquadReady(true)
+      return
+    }
+    setSquadReady(false)
+    const qy = query(
+      collection(getDb(), 'matches'),
+      where('rosterPlayerIds', 'array-contains', user.uid),
+    )
+    return onSnapshot(
+      qy,
+      (snap) => {
+        const list: Row[] = []
+        snap.forEach((d) => list.push({ id: d.id, ...(d.data() as MatchDoc) }))
+        setSquadRows(list)
+        setSquadReady(true)
+      },
+      (err) => {
+        console.error('[PublicMatchesPage] squad', err)
+        setSquadRows([])
+        setSquadReady(true)
+        setSnapshotError((prev) => prev ?? err.message ?? 'Could not load matches.')
+      },
+    )
+  }, [user?.uid])
+
+  useEffect(() => {
+    if (!user?.uid) {
+      setParentRows([])
+      setParentReady(true)
+      return
+    }
+    setParentReady(false)
+    const qy = query(
+      collection(getDb(), 'matches'),
+      where('isInternalMatch', '==', true),
+      where('parentTeamMemberIds', 'array-contains', user.uid),
+    )
+    return onSnapshot(
+      qy,
+      (snap) => {
+        const list: Row[] = []
+        snap.forEach((d) => list.push({ id: d.id, ...(d.data() as MatchDoc) }))
+        setParentRows(list)
+        setParentReady(true)
+      },
+      (err) => {
+        console.error('[PublicMatchesPage] parent', err)
+        setParentRows([])
+        setParentReady(true)
+        setSnapshotError((prev) => prev ?? err.message ?? 'Could not load matches.')
+      },
+    )
+  }, [user?.uid])
+
+  const publicRows = useMemo(
+    () => mergeHomeMatchRows(publicOnlyRows, squadRows, parentRows),
+    [publicOnlyRows, squadRows, parentRows],
+  )
 
   const setFilter = (f: PublicBrowseFilter) => {
     const next = new URLSearchParams(searchParams)
@@ -211,13 +290,13 @@ export function PublicMatchesPage() {
 
   const emptyMessage =
     filter === 'live'
-      ? 'No live public matches.'
+      ? 'No live matches right now.'
       : filter === 'upcoming'
-        ? 'No upcoming public matches.'
-        : 'No completed public matches yet.'
+        ? 'No upcoming matches.'
+        : 'No completed matches yet.'
 
-  const loading = snapshotStatus === 'loading'
-  const error = snapshotStatus === 'error' ? snapshotError : null
+  const loading = !publicReady || !squadReady || !parentReady
+  const error = snapshotError
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-4 py-2">
@@ -261,7 +340,7 @@ export function PublicMatchesPage() {
             <ul className="space-y-4">
               {pageRows.map((m) => (
                 <li key={m.id}>
-                  <PublicMatchCardRow m={m} />
+                  <PublicMatchCardRow m={m} viewerUid={user?.uid} />
                 </li>
               ))}
             </ul>

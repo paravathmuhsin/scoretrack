@@ -5,6 +5,8 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useAuth } from '../auth/useAuth'
 import { getDb } from '../firebase/config'
+import { writeAccessibleSquadForJoiner } from '../lib/accessibleSquads'
+import { buildMemberIdsFromPlayers } from '../lib/matchRosterIndex'
 import { isProfileComplete } from '../lib/profileComplete'
 import type { TeamDoc, UserProfileDoc, UserTeamJoinInviteDoc } from '../types/models'
 import { Button, buttonVariants } from '@/components/ui/button'
@@ -121,11 +123,20 @@ export function TeamJoinInvitePage() {
     try {
       await updateDoc(doc(getDb(), 'users', ownerUid, 'teams', teamId), {
         players: nextPlayers,
+        memberIds: buildMemberIdsFromPlayers(nextPlayers),
       })
       const name =
         view.teamName?.trim() ||
         team.name?.trim() ||
         'the team'
+      await writeAccessibleSquadForJoiner(
+        getDb(),
+        user.uid,
+        ownerUid,
+        teamId,
+        name,
+        team.shortName,
+      )
       setView({ kind: 'thanks', teamName: name })
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not join team')

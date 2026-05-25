@@ -247,6 +247,8 @@ export type MatchFormCreateFieldsProps = {
   friendlyVenue?: string
   setFriendlyVenue?: (v: string) => void
   showFriendlyVenue?: boolean
+  showTeamSelection?: boolean
+  showPublicToggle?: boolean
 }
 
 export function MatchFormCreateFields({
@@ -278,6 +280,8 @@ export function MatchFormCreateFields({
   friendlyVenue = '',
   setFriendlyVenue,
   showFriendlyVenue = false,
+  showTeamSelection = true,
+  showPublicToggle = true,
 }: MatchFormCreateFieldsProps) {
   const squadChoices = mergeChoices(SQUAD_OPTIONS, squadSize)
   const oversChoices = mergeChoices(OVERS_BASE, oversLimit)
@@ -293,7 +297,7 @@ export function MatchFormCreateFields({
 
   return (
     <>
-      {!canSubmit && (
+      {!canSubmit && showTeamSelection && (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-950">
           Create at least two squads under{' '}
           <Link to="/app/teams" className="font-semibold !text-primary hover:underline">
@@ -304,6 +308,7 @@ export function MatchFormCreateFields({
       )}
 
       {/* Team selection */}
+      {showTeamSelection ? (
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.04)]">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
           <TeamPickerCard
@@ -354,6 +359,7 @@ export function MatchFormCreateFields({
           </p>
         </div>
       </section>
+      ) : null}
 
       {/* Match rules */}
       <section className="space-y-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.04)]">
@@ -646,6 +652,7 @@ export function MatchFormCreateFields({
           </label>
         </div>
 
+        {showPublicToggle ? (
         <div className="border-t border-slate-100 pt-4">
           <label className="flex !flex-row flex-nowrap cursor-pointer items-center !gap-6 rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-[0_1px_3px_rgba(15,23,42,0.06)] transition-colors hover:border-slate-300 focus-within:ring-2 focus-within:ring-primary/25 focus-within:ring-offset-2">
             <input
@@ -676,6 +683,7 @@ export function MatchFormCreateFields({
             </span>
           </label>
         </div>
+        ) : null}
       </section>
 
       {error ? (

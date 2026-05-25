@@ -29,15 +29,19 @@ type Props = {
   match: { id: string } & MatchDoc
   /** Live tab uses realtime updates; completed listing loads events once. */
   replayMode?: 'live' | 'completed'
+  /** Load events when the viewer may see a private match (squad / internal parent / creator). */
+  allowPrivateReplay?: boolean
 }
 
-export function LiveMatchListCard({ match, replayMode = 'live' }: Props) {
+export function LiveMatchListCard({ match, replayMode = 'live', allowPrivateReplay = false }: Props) {
   /** Re-check 24h result window periodically while the card can still flip. */
   const [, setListingTick] = useState(0)
 
+  const canReplay = match.isPublic || allowPrivateReplay
   const { cfg, state } = usePublicMatchReplay(
     match,
-    !match.id || !match.isPublic ? 'off' : replayMode,
+    !match.id || !canReplay ? 'off' : replayMode,
+    allowPrivateReplay,
   )
 
   useEffect(() => {

@@ -147,7 +147,7 @@ export function MatchTeamPickerDialogContent({
               <Search className="size-4 shrink-0 text-slate-400" aria-hidden />
               <Input
                 ref={searchInputRef}
-                type="search"
+                type="text"
                 autoComplete="off"
                 placeholder="Search teams..."
                 value={pickerSearch}
@@ -155,16 +155,6 @@ export function MatchTeamPickerDialogContent({
                 aria-label="Search teams"
                 className="h-9 flex-1 border-0 bg-transparent px-0 py-0 text-slate-900 shadow-none placeholder:text-slate-500 focus-visible:ring-0 md:text-sm"
               />
-              {pickerSearch ? (
-                <button
-                  type="button"
-                  className="inline-flex size-7 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                  aria-label="Clear search"
-                  onClick={() => onPickerSearchChange('')}
-                >
-                  <X className="size-3.5" strokeWidth={2.5} />
-                </button>
-              ) : null}
             </div>
 
             <p className="shrink-0 text-xs text-slate-400">Type to filter your squads by name.</p>

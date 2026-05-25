@@ -182,6 +182,9 @@ export function applyMatchCompletionStatsToBatch(
       fieldingStumpings: fd.stumpings,
       wasPotm,
       ...(captaincy ? { wasCaptain: true } : {}),
+      ...(match.isInternalMatch && match.parentUserTeamRef
+        ? { parentUserTeamRef: match.parentUserTeamRef }
+        : {}),
     }
     batch.set(rowRef, row, { merge: true })
 

@@ -18,11 +18,7 @@ import {
   getAndroidApkDownloadUrl,
   isAndroidApkDownloadEnabled,
 } from '../lib/androidApkDownload'
-import {
-  launchAndroidApp,
-  markAndroidApkDownloadPending,
-  resolveAndroidAppInstalledWithRetry,
-} from '../lib/openInAppUrl'
+import { launchAndroidApp, markAndroidApkDownloadPending } from '../lib/openInAppUrl'
 
 const DISMISS_KEY = 'st-android-apk-modal-dismissed'
 const SHOW_DELAY_MS = 3000
@@ -43,43 +39,23 @@ function delay(ms: number): Promise<void> {
   })
 }
 
-/** Prompts Android browser visitors to install or open the app after a short delay. */
+/** Prompts Android browser visitors to install the app after a short delay. */
 export function AndroidAppDownloadModal() {
   const [open, setOpen] = useState(false)
-  const [appInstalled, setAppInstalled] = useState(false)
 
   useEffect(() => {
     if (!shouldOfferAndroidApkDownload()) return
 
     let cancelled = false
 
-    async function refreshInstalledState() {
-      const installed = await resolveAndroidAppInstalledWithRetry()
-      if (!cancelled) setAppInstalled(installed)
-      return installed
-    }
-
     void (async () => {
       await delay(SHOW_DELAY_MS)
       if (cancelled || !shouldOfferAndroidApkDownload()) return
-      await refreshInstalledState()
       setOpen(true)
     })()
 
-    const onReturnToPage = () => {
-      if (document.visibilityState !== 'visible') return
-      void refreshInstalledState()
-    }
-
-    document.addEventListener('visibilitychange', onReturnToPage)
-    window.addEventListener('pageshow', onReturnToPage)
-    window.addEventListener('focus', onReturnToPage)
-
     return () => {
       cancelled = true
-      document.removeEventListener('visibilitychange', onReturnToPage)
-      window.removeEventListener('pageshow', onReturnToPage)
-      window.removeEventListener('focus', onReturnToPage)
     }
   }, [])
 
@@ -112,46 +88,35 @@ export function AndroidAppDownloadModal() {
           <AlertDialogMedia className="bg-primary/10 text-primary">
             <Smartphone className="size-5" aria-hidden />
           </AlertDialogMedia>
-          <AlertDialogTitle>
-            {appInstalled ? 'Open ScoreTrack app' : 'Get the ScoreTrack app'}
-          </AlertDialogTitle>
+          <AlertDialogTitle>Get the ScoreTrack app</AlertDialogTitle>
           <AlertDialogDescription>
-            {appInstalled
-              ? 'ScoreTrack is installed on your device. Open the app for faster access and live scoring.'
-              : 'Install the Android app for faster access, live scoring, and a better experience than the browser.'}
+            Install the Android app for faster access, live scoring, and a better experience than the
+            browser.
           </AlertDialogDescription>
-          {!appInstalled ? (
-            <button
-              type="button"
-              className="mt-1 text-left text-sm font-medium text-primary hover:underline"
-              onClick={openApp}
-            >
-              Already installed? Open app
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className="mt-1 text-left text-sm font-medium text-primary hover:underline"
+            onClick={openApp}
+          >
+            Already installed? Open app
+          </button>
         </AlertDialogHeader>
         <AlertDialogFooter className="!flex-col gap-2 sm:!flex-col sm:!justify-stretch">
-          {appInstalled ? (
-            <Button type="button" className={primaryButtonClassName} onClick={openApp}>
-              Open app
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              className={primaryButtonClassName}
-              render={
-                <a
-                  href={getAndroidApkDownloadUrl()}
-                  download={ANDROID_APK_FILE_NAME}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() => markAndroidApkDownloadPending()}
-                />
-              }
-            >
-              Download app
-            </Button>
-          )}
+          <Button
+            type="button"
+            className={primaryButtonClassName}
+            render={
+              <a
+                href={getAndroidApkDownloadUrl()}
+                download={ANDROID_APK_FILE_NAME}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => markAndroidApkDownloadPending()}
+              />
+            }
+          >
+            Download app
+          </Button>
           <AlertDialogCancel type="button" className={actionButtonClassName} onClick={dismiss}>
             Not now
           </AlertDialogCancel>

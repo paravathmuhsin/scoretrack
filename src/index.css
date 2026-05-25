@@ -3294,26 +3294,44 @@ html[data-obs-overlay='true'] body #root {
   z-index: 25;
 }
 
+.score-page-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.score-page-share-trigger,
 .score-settings-trigger {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  align-self: center;
-  width: auto;
-  height: auto;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
+  min-width: 2.5rem;
+  min-height: 2.5rem;
+  padding: 0.35rem;
+  border-radius: 999px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
   color: #475569;
   cursor: pointer;
+  flex-shrink: 0;
   box-shadow: none;
+}
+
+.score-page-share-trigger:hover:not(:disabled),
+.score-settings-trigger:hover {
+  border-color: #e50914;
+  color: #e50914;
+}
+
+.score-page-share-trigger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.score-settings-trigger {
   position: relative;
   z-index: 31;
-}
-.score-settings-trigger:hover {
-  background: transparent;
-  color: #0f172a;
 }
 
 .score-settings-panel {

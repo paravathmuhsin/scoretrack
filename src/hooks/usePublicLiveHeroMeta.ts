@@ -1,23 +1,26 @@
 import { doc, getDoc } from 'firebase/firestore'
 import { useEffect, useState } from 'react'
 import { getDb } from '../firebase/config'
+import { resolvePublicLiveHeroLine } from '../lib/matchListingLabel'
 import { formatTournamentListingMeta } from './useTournamentListingMeta'
 import type { MatchDoc, TournamentDoc } from '../types/models'
 
+export type PublicLiveHeroMetaMatch = Pick<
+  MatchDoc,
+  'tournamentId' | 'tournamentFixtureLabel' | 'venue' | 'isInternalMatch' | 'parentUserTeamRef'
+>
+
 /**
- * Secondary line for public `/live/:id`: tournament name · venue · fixture label from Firestore,
- * or `Friendly` with optional match {@link MatchDoc.venue}.
+ * Secondary line for public `/live/:id`: tournament name · fixture label,
+ * or `Friendly` / `Internal · {parent team}` with optional venue.
  */
-export function usePublicLiveHeroMeta(
-  match: Pick<MatchDoc, 'tournamentId' | 'tournamentFixtureLabel' | 'venue'>,
-): string {
-  const [line, setLine] = useState(() => initialLine(match))
+export function usePublicLiveHeroMeta(match: PublicLiveHeroMetaMatch): string {
+  const [line, setLine] = useState(() => resolvePublicLiveHeroLine(match))
 
   useEffect(() => {
     if (match.tournamentId) return
-    const v = (match.venue ?? '').trim()
-    setLine(v ? `Friendly · ${v}` : 'Friendly')
-  }, [match.tournamentId, match.venue])
+    setLine(resolvePublicLiveHeroLine(match))
+  }, [match.tournamentId, match.venue, match.isInternalMatch, match.parentUserTeamRef])
 
   useEffect(() => {
     const tid = match.tournamentId
@@ -52,12 +55,4 @@ export function usePublicLiveHeroMeta(
   }, [match.tournamentId, match.tournamentFixtureLabel])
 
   return line
-}
-
-function initialLine(match: Pick<MatchDoc, 'tournamentId' | 'tournamentFixtureLabel' | 'venue'>): string {
-  if (!match.tournamentId) {
-    const v = (match.venue ?? '').trim()
-    return v ? `Friendly · ${v}` : 'Friendly'
-  }
-  return match.tournamentFixtureLabel?.trim() || 'Tournament'
 }
