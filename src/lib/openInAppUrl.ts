@@ -8,6 +8,9 @@ export { ANDROID_PACKAGE }
 /** Set when the native app was confirmed installed (API or successful launch). */
 export const ANDROID_APP_INSTALLED_KEY = 'st-android-app-installed'
 
+/** Set after the user taps Download — show Open on return (Chrome often misses sideloaded APKs). */
+export const ANDROID_APK_DOWNLOAD_PENDING_KEY = 'st-android-apk-download-pending'
+
 export function isMobileWebBrowser(): boolean {
   if (typeof navigator === 'undefined') return false
   return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
@@ -56,9 +59,26 @@ function readStoredAndroidAppInstalled(): boolean {
   return localStorage.getItem(ANDROID_APP_INSTALLED_KEY) === '1'
 }
 
+function readAndroidApkDownloadPending(): boolean {
+  if (typeof localStorage === 'undefined') return false
+  return localStorage.getItem(ANDROID_APK_DOWNLOAD_PENDING_KEY) === '1'
+}
+
+/** Call when the user starts an APK download from the browser prompt. */
+export function markAndroidApkDownloadPending(): void {
+  if (typeof localStorage === 'undefined') return
+  localStorage.setItem(ANDROID_APK_DOWNLOAD_PENDING_KEY, '1')
+}
+
+function clearAndroidApkDownloadPending(): void {
+  if (typeof localStorage === 'undefined') return
+  localStorage.removeItem(ANDROID_APK_DOWNLOAD_PENDING_KEY)
+}
+
 export function markAndroidAppInstalled(): void {
   if (typeof localStorage === 'undefined') return
   localStorage.setItem(ANDROID_APP_INSTALLED_KEY, '1')
+  clearAndroidApkDownloadPending()
 }
 
 async function isAndroidAppInstalledViaApi(): Promise<boolean | null> {
@@ -78,9 +98,10 @@ async function isAndroidAppInstalledViaApi(): Promise<boolean | null> {
   }
 }
 
-/** Detect installed Android app via Chrome API or a prior successful app launch. */
+/** Detect installed Android app (Chrome API, prior open, or post-download return). */
 export async function resolveAndroidAppInstalled(): Promise<boolean> {
   if (readStoredAndroidAppInstalled()) return true
+  if (readAndroidApkDownloadPending()) return true
 
   const viaApi = await isAndroidAppInstalledViaApi()
   if (viaApi === true) {
@@ -88,6 +109,18 @@ export async function resolveAndroidAppInstalled(): Promise<boolean> {
     return true
   }
 
+  return false
+}
+
+/** Re-check a few times — asset link verification can lag right after install. */
+export async function resolveAndroidAppInstalledWithRetry(): Promise<boolean> {
+  const delaysMs = [0, 1500, 4000]
+  for (const waitMs of delaysMs) {
+    if (waitMs > 0) {
+      await new Promise((resolve) => window.setTimeout(resolve, waitMs))
+    }
+    if (await resolveAndroidAppInstalled()) return true
+  }
   return false
 }
 

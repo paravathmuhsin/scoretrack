@@ -18,7 +18,11 @@ import {
   getAndroidApkDownloadUrl,
   isAndroidApkDownloadEnabled,
 } from '../lib/androidApkDownload'
-import { launchAndroidApp, resolveAndroidAppInstalled } from '../lib/openInAppUrl'
+import {
+  launchAndroidApp,
+  markAndroidApkDownloadPending,
+  resolveAndroidAppInstalledWithRetry,
+} from '../lib/openInAppUrl'
 
 const DISMISS_KEY = 'st-android-apk-modal-dismissed'
 const SHOW_DELAY_MS = 3000
@@ -49,25 +53,33 @@ export function AndroidAppDownloadModal() {
 
     let cancelled = false
 
+    async function refreshInstalledState() {
+      const installed = await resolveAndroidAppInstalledWithRetry()
+      if (!cancelled) setAppInstalled(installed)
+      return installed
+    }
+
     void (async () => {
-      const [, installed] = await Promise.all([delay(SHOW_DELAY_MS), resolveAndroidAppInstalled()])
+      await delay(SHOW_DELAY_MS)
       if (cancelled || !shouldOfferAndroidApkDownload()) return
-      setAppInstalled(installed)
+      await refreshInstalledState()
       setOpen(true)
     })()
 
-    const refreshInstalled = () => {
+    const onReturnToPage = () => {
       if (document.visibilityState !== 'visible') return
-      void resolveAndroidAppInstalled().then((installed) => {
-        if (!cancelled) setAppInstalled(installed)
-      })
+      void refreshInstalledState()
     }
 
-    document.addEventListener('visibilitychange', refreshInstalled)
+    document.addEventListener('visibilitychange', onReturnToPage)
+    window.addEventListener('pageshow', onReturnToPage)
+    window.addEventListener('focus', onReturnToPage)
 
     return () => {
       cancelled = true
-      document.removeEventListener('visibilitychange', refreshInstalled)
+      document.removeEventListener('visibilitychange', onReturnToPage)
+      window.removeEventListener('pageshow', onReturnToPage)
+      window.removeEventListener('focus', onReturnToPage)
     }
   }, [])
 
@@ -108,6 +120,15 @@ export function AndroidAppDownloadModal() {
               ? 'ScoreTrack is installed on your device. Open the app for faster access and live scoring.'
               : 'Install the Android app for faster access, live scoring, and a better experience than the browser.'}
           </AlertDialogDescription>
+          {!appInstalled ? (
+            <button
+              type="button"
+              className="mt-1 text-left text-sm font-medium text-primary hover:underline"
+              onClick={openApp}
+            >
+              Already installed? Open app
+            </button>
+          ) : null}
         </AlertDialogHeader>
         <AlertDialogFooter className="!flex-col gap-2 sm:!flex-col sm:!justify-stretch">
           {appInstalled ? (
@@ -122,7 +143,9 @@ export function AndroidAppDownloadModal() {
                 <a
                   href={getAndroidApkDownloadUrl()}
                   download={ANDROID_APK_FILE_NAME}
-                  onClick={dismiss}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => markAndroidApkDownloadPending()}
                 />
               }
             >
