@@ -26,6 +26,12 @@ if [[ -f "$RELEASE_KS" && -f "$PROPS" ]]; then
 fi
 
 echo ""
-echo "Add each SHA-1 in Firebase Console → Project settings → Your Android app → Add fingerprint,"
-echo "or run (after firebase login):"
+echo "Required for Google Sign-In on Android (fixes error code 10):"
+echo "  Firebase Console → Project settings → ScoreTrack Android app → Add fingerprint"
+echo "  Add EVERY SHA-1 below for the APKs you install (debug + release)."
+echo ""
+echo "Or register via CLI (after firebase login):"
 echo "  firebase apps:android:sha:create $ANDROID_APP_ID <SHA1> --project $PROJECT_ID"
+echo ""
+echo "After adding fingerprints: download google-services.json, then:"
+echo "  npm run cap:android:firebase && npm run cap:sync"
