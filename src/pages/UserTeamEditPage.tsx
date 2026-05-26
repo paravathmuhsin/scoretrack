@@ -16,6 +16,7 @@ import { notifyNewCoOwners, notifyRemovedCoOwners } from '../lib/coOwnerNotifica
 import { removeSelfCoOwnership } from '../lib/removeCoOwnership'
 import { notifyPlayersRemovedFromTeam } from '../lib/rosterNotifications'
 import { mergeProtectedRosterForCoOwnerSave, normalizeOwnerIds } from '../lib/teamOwnerIds'
+import { ensureTeamNumber } from '../lib/teamNumber'
 import { Spinner } from '../components/Spinner'
 import { usePendingWrites } from '../hooks/usePendingWrites'
 import { getDb } from '../firebase/config'
@@ -51,6 +52,7 @@ export function UserTeamEditPage() {
   const [transferModalOpen, setTransferModalOpen] = useState(false)
   const [transferBusy, setTransferBusy] = useState(false)
   const [inviteBusy, setInviteBusy] = useState(false)
+  const [revokeInviteOpen, setRevokeInviteOpen] = useState(false)
   const [leaveCoOwnerOpen, setLeaveCoOwnerOpen] = useState(false)
   const [leaveCoOwnerBusy, setLeaveCoOwnerBusy] = useState(false)
 
@@ -91,6 +93,27 @@ export function UserTeamEditPage() {
     }
   }
 
+  async function revokeInviteLink() {
+    if (!user || !teamId || !team?.joinInviteToken || !ownerUid) return
+    const tok = team.joinInviteToken
+    setInviteBusy(true)
+    try {
+      await deleteDoc(doc(getDb(), 'userTeamJoinInvites', tok))
+      await updateDoc(doc(getDb(), 'users', ownerUid, 'teams', teamId), {
+        joinInviteToken: deleteField(),
+      })
+      const { joinInviteToken: _removed, ...rest } = team
+      setTeam(rest as typeof team)
+      setRevokeInviteOpen(false)
+      setShareModalOpen(false)
+      toast.success('Invitation link removed')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not remove invitation link')
+    } finally {
+      setInviteBusy(false)
+    }
+  }
+
   useEffect(() => {
     if (!user || !teamId || !pathOwnerUid) return
     void (async () => {
@@ -105,7 +128,15 @@ export function UserTeamEditPage() {
         setLoadFailed(true)
         return
       }
-      const data = { id: tmSnap.id, ...(tmSnap.data() as TeamDoc) }
+      let data = { id: tmSnap.id, ...(tmSnap.data() as TeamDoc) }
+      if (user.uid === ouid && data.teamNumber == null) {
+        try {
+          const num = await ensureTeamNumber(getDb(), ouid, teamId)
+          if (num != null) data = { ...data, teamNumber: num }
+        } catch {
+          /* show form without id until retry */
+        }
+      }
       const can =
         user.uid === ouid || (data.ownerIds ?? []).includes(user.uid)
       setTeam(data)
@@ -270,8 +301,7 @@ export function UserTeamEditPage() {
                     Invite players
                   </h2>
                   <p className="mt-1 text-sm text-slate-500">
-                    Anyone with this link can sign in and join your squad. Only the roster can change — not the team
-                    name or other details.
+                    Anyone with this link can sign in and join your squad.
                   </p>
                 </div>
               </div>
@@ -302,6 +332,21 @@ export function UserTeamEditPage() {
                     onFocus={(e) => e.target.select()}
                     className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 font-mono text-xs text-slate-900 outline-none ring-primary focus:ring-2 sm:text-sm"
                   />
+                  <p className="mt-3 text-sm text-slate-600">
+                    Stop sharing to invalidate this link. You can generate a new one anytime.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-3 h-10 w-full border-destructive/55 text-destructive hover:bg-destructive/5"
+                    disabled={inviteBusy || writePending}
+                    onClick={() => {
+                      setShareModalOpen(false)
+                      setRevokeInviteOpen(true)
+                    }}
+                  >
+                    Remove invitation link
+                  </Button>
                 </>
               )}
             </div>
@@ -341,6 +386,30 @@ export function UserTeamEditPage() {
           </div>
         </div>
       )}
+
+      <AlertDialog open={revokeInviteOpen} onOpenChange={setRevokeInviteOpen}>
+        <AlertDialogContent size="sm" className="max-w-[min(100vw-2rem,22rem)] sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove invitation link?</AlertDialogTitle>
+            <AlertDialogDescription className="text-sm text-slate-600">
+              Anyone with the current link will no longer be able to join{' '}
+              <span className="font-semibold text-slate-700">{team.name}</span>. You can generate a new link later.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="grid grid-cols-2 gap-3">
+            <AlertDialogCancel disabled={inviteBusy}>Cancel</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="default"
+              className="!text-primary-foreground hover:!text-primary-foreground"
+              disabled={inviteBusy}
+              onClick={() => void revokeInviteLink()}
+            >
+              {inviteBusy ? 'Removing…' : 'Remove link'}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1 leading-tight">

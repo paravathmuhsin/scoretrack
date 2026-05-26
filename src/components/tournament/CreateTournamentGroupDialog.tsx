@@ -11,6 +11,7 @@ import {
 } from './tournamentModalFooterButtons'
 import { Button } from '@/components/ui/button'
 import { getDb } from '../../firebase/config'
+import { linkedTeamIsApproved } from '../../lib/tournamentTeamLinkInvite'
 import type { TournamentGroupDoc, TournamentLinkedTeamDoc } from '../../types/models'
 
 type Props = {
@@ -45,10 +46,17 @@ export function CreateTournamentGroupDialog({
 
   const linkOptions = useMemo(
     () =>
-      linkedTeams.map((l) => ({
-        id: l.id,
-        label: teamLabel(l),
-      })),
+      linkedTeams
+        .filter(linkedTeamIsApproved)
+        .map((l) => ({
+          id: l.id,
+          label: teamLabel(l),
+        })),
+    [linkedTeams],
+  )
+
+  const pendingLinkCount = useMemo(
+    () => linkedTeams.filter((l) => l.linkApprovalStatus === 'pending').length,
     [linkedTeams],
   )
 
@@ -178,6 +186,13 @@ export function CreateTournamentGroupDialog({
                 className={matchFormInputFieldShell}
               />
             </div>
+
+            {pendingLinkCount > 0 ? (
+              <p className="shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                {pendingLinkCount} squad{pendingLinkCount === 1 ? '' : 's'} still awaiting approval — only
+                approved squads can be added to a group.
+              </p>
+            ) : null}
 
             <TournamentGroupTeamsPicker
               className="min-h-0"

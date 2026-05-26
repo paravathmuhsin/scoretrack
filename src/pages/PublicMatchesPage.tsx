@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { getDb } from '../firebase/config'
 import {
   canViewMatchOnHome,
+  matchApprovedForPublicListing,
   mergeHomeMatchRows,
   type HomeMatchRow,
 } from '../lib/publicHomeMatchQueries'
@@ -156,7 +157,10 @@ export function PublicMatchesPage() {
       qy,
       (snap) => {
         const list: Row[] = []
-        snap.forEach((d) => list.push({ id: d.id, ...(d.data() as MatchDoc) }))
+        snap.forEach((d) => {
+          const row = { id: d.id, ...(d.data() as MatchDoc) }
+          if (matchApprovedForPublicListing(row)) list.push(row)
+        })
         setPublicOnlyRows(list)
         setPublicReady(true)
         setSnapshotError(null)

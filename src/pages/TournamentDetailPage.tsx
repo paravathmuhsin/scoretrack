@@ -26,6 +26,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { toast } from 'sonner'
 import { useAuth } from '../auth/useAuth'
 import { PublicTournamentMatchScoreLines } from '../components/PublicTournamentMatchScoreLines'
 import { ScheduleTournamentMatchDialog } from '../components/tournament/ScheduleTournamentMatchDialog'
@@ -53,6 +54,11 @@ import {
   timestampToDateInput,
 } from '../lib/tournamentFormUtils'
 import { getDb } from '../firebase/config'
+import type { SelectableUserTeam } from '../hooks/useSelectableUserTeams'
+import {
+  createTournamentTeamLinkInvite,
+  linkedTeamIsApproved,
+} from '../lib/tournamentTeamLinkInvite'
 import { deleteTournamentCascade } from '../lib/deleteTournamentCascade'
 import { incrementPottForPlayer } from '../lib/matchPlayerStatsPersistence'
 import { compareMatchesOperationalOrder } from '../lib/matchListSort'
@@ -368,9 +374,15 @@ export function TournamentDetailPage() {
     }
   }, [updateTabScrollHints, id])
 
+  function squadAlreadyLinked(teamId: string, ownerUid: string): boolean {
+    return linkedTeams.some(
+      (l) => l.userTeamId === teamId && (l.userTeamOwnerUid ?? user?.uid ?? '') === ownerUid,
+    )
+  }
+
   const linkableTeams = useMemo(
-    () => myTeams.filter((s) => !linkedTeams.some((l) => l.userTeamId === s.id)),
-    [myTeams, linkedTeams],
+    () => myTeams.filter((s) => !squadAlreadyLinked(s.id, user?.uid ?? '')),
+    [myTeams, linkedTeams, user?.uid],
   )
 
   const filteredLinkableTeams = useMemo(() => {
@@ -567,7 +579,7 @@ export function TournamentDetailPage() {
     setError(null)
     const squad = myTeams.find((x) => x.id === userTeamId)
     if (!squad) return
-    if (linkedTeams.some((l) => l.userTeamId === userTeamId)) {
+    if (squadAlreadyLinked(userTeamId, user.uid)) {
       setError('That squad is already linked.')
       return
     }
@@ -590,6 +602,63 @@ export function TournamentDetailPage() {
       if (t.teamCount != null && linkedTeams.length + 1 >= t.teamCount) {
         closeAddTeamModal()
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not link team')
+    } finally {
+      setLinkingSquadId(null)
+    }
+  }
+
+  async function linkGlobalSquad(team: SelectableUserTeam) {
+    if (!id || !user?.uid || !t) return
+    setError(null)
+    if (team.ownerUid === user.uid) {
+      await linkSquad(team.id)
+      return
+    }
+    if (team.teamNumber == null) {
+      setError('That squad does not have a team ID yet.')
+      return
+    }
+    if (squadAlreadyLinked(team.id, team.ownerUid)) {
+      setError('That squad is already linked.')
+      return
+    }
+    if (t.teamCount != null && linkedTeams.length >= t.teamCount) {
+      setError(
+        `This tournament is limited to ${t.teamCount} ${t.teamCount === 1 ? 'squad' : 'squads'}. Remove one before adding another.`,
+      )
+      return
+    }
+    const linkKey = `${team.ownerUid}:${team.id}`
+    setLinkingSquadId(linkKey)
+    try {
+      const linkRef = await run(() =>
+        addDoc(collection(getDb(), 'tournaments', id, 'linkedTeams'), {
+          userTeamId: team.id,
+          userTeamOwnerUid: team.ownerUid,
+          teamNumber: team.teamNumber,
+          linkApprovalStatus: 'pending',
+          teamName: team.name,
+          ...(team.shortName?.trim() ? { teamShortName: team.shortName.trim() } : {}),
+        } satisfies TournamentLinkedTeamDoc),
+      )
+      const organiserName =
+        user.displayName?.trim() || user.email?.split('@')[0] || 'Tournament organiser'
+      await createTournamentTeamLinkInvite(getDb(), {
+        tournamentId: id,
+        tournamentName: t.name,
+        linkedTeamId: linkRef.id,
+        teamOwnerUid: team.ownerUid,
+        teamId: team.id,
+        teamNumber: team.teamNumber,
+        teamName: team.name,
+        createdBy: user.uid,
+        organiserDisplayName: organiserName,
+        team,
+      })
+      toast.success('Invitation sent — the squad can be used after owners approve.')
+      setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not link team')
     } finally {
@@ -652,7 +721,10 @@ export function TournamentDetailPage() {
 
   /** Every planned squad must be linked on Teams before scheduling (legacy tournaments without teamCount: at least two). */
   const squadsRequiredToSchedule = Math.max(2, t.teamCount ?? 0)
-  const canScheduleMatches = linkedTeams.length >= squadsRequiredToSchedule
+  const approvedLinkedCount = linkedTeams.filter(linkedTeamIsApproved).length
+  const hasPendingLinkedSquads = linkedTeams.some((l) => l.linkApprovalStatus === 'pending')
+  const canScheduleMatches =
+    approvedLinkedCount >= squadsRequiredToSchedule && !hasPendingLinkedSquads
   const hasSchedulingGroups = tournamentGroups.length > 0
   const canOpenScheduleModal = canScheduleMatches && hasSchedulingGroups
   const tournamentEnded = Boolean(t.tournamentOutcome)
@@ -1167,10 +1239,16 @@ export function TournamentDetailPage() {
             )}
 
             {linkedTeams.map((l) => {
-              const squad = myTeams.find((m) => m.id === l.userTeamId)
+              const ownerUid = l.userTeamOwnerUid ?? user.uid
+              const squad = myTeams.find((m) => m.id === l.userTeamId && ownerUid === user.uid)
               const label = l.teamName ?? squad?.name ?? l.userTeamId
               const shortName = squad?.shortName?.trim() || l.teamShortName?.trim()
               const hue = teamAvatarHue(label)
+              const pending = l.linkApprovalStatus === 'pending'
+              const editHref =
+                ownerUid === user.uid
+                  ? `/app/teams/${l.userTeamId}`
+                  : `/app/teams/${l.userTeamId}?owner=${encodeURIComponent(ownerUid)}`
               return (
                 <article key={l.id} className="tourn-team-card">
                   <div
@@ -1184,10 +1262,13 @@ export function TournamentDetailPage() {
                   </div>
                   <div className="tourn-team-card-footer">
                     <strong className="tourn-team-card-title">{label}</strong>
+                    {pending ? (
+                      <p className="mt-1 text-xs font-semibold text-amber-700">Awaiting approval</p>
+                    ) : null}
                     {!tournamentEnded ? (
                       <div className="tourn-team-card-actions">
-                        <Link className="tourn-team-card-link" to={`/app/teams/${l.userTeamId}`}>
-                          Edit roster
+                        <Link className="tourn-team-card-link" to={editHref}>
+                          {squad ? 'Edit roster' : 'View squad'}
                         </Link>
                         <button
                           type="button"
@@ -1405,7 +1486,9 @@ export function TournamentDetailPage() {
         open={endTournamentOpen}
         onClose={() => closeEndTournamentDialog()}
         tournamentName={t.name}
-        teamOptions={linkedTeams.map((l) => ({ id: l.id, label: linkedTeamDisplayName(l.id) }))}
+        teamOptions={linkedTeams
+          .filter(linkedTeamIsApproved)
+          .map((l) => ({ id: l.id, label: linkedTeamDisplayName(l.id) }))}
         statsPlayers={statsPlayersForPot}
         potKeySep={POT_KEY_SEP}
         winnerId={endTournamentWinnerId}
@@ -1505,6 +1588,7 @@ export function TournamentDetailPage() {
           linkingSquadId={linkingSquadId}
           error={error}
           onSelectSquad={(teamId) => void linkSquad(teamId)}
+          onSelectGlobalSquad={(team) => void linkGlobalSquad(team)}
           onClose={() => closeAddTeamModal()}
         />
       </dialog>

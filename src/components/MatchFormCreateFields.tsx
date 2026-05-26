@@ -249,6 +249,11 @@ export type MatchFormCreateFieldsProps = {
   showFriendlyVenue?: boolean
   showTeamSelection?: boolean
   showPublicToggle?: boolean
+  /** Mention global team ID search in the team-picker hint. */
+  showGlobalTeamSearchHint?: boolean
+  /** When an external squad must accept before scoring. */
+  disableStartNow?: boolean
+  startNowDisabledHint?: string
 }
 
 export function MatchFormCreateFields({
@@ -282,6 +287,9 @@ export function MatchFormCreateFields({
   showFriendlyVenue = false,
   showTeamSelection = true,
   showPublicToggle = true,
+  showGlobalTeamSearchHint = false,
+  disableStartNow = false,
+  startNowDisabledHint,
 }: MatchFormCreateFieldsProps) {
   const squadChoices = mergeChoices(SQUAD_OPTIONS, squadSize)
   const oversChoices = mergeChoices(OVERS_BASE, oversLimit)
@@ -353,7 +361,13 @@ export function MatchFormCreateFields({
                 <Link to="/app/teams" className="font-semibold !text-primary hover:underline">
                   My teams
                 </Link>
-                . Both teams are required.
+                {showGlobalTeamSearchHint ? (
+                  <>
+                    {' '}
+                    or use <strong className="text-slate-900">Search by team ID</strong> for any squad.
+                  </>
+                ) : null}{' '}
+                Both teams are required.
               </>
             )}
           </p>
@@ -484,17 +498,24 @@ export function MatchFormCreateFields({
             <div
               className={cn(
                 'flex items-start gap-1 rounded-xl border-2 p-2.5 transition-colors sm:min-w-0',
+                disableStartNow && 'opacity-55',
                 scheduleMode === 'now'
                   ? 'border-primary/35 bg-primary/[0.06]'
                   : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50',
               )}
             >
-              <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 !flex-row">
+              <label
+                className={cn(
+                  'flex min-w-0 flex-1 items-center gap-2.5 !flex-row',
+                  disableStartNow ? 'cursor-not-allowed' : 'cursor-pointer',
+                )}
+              >
                 <input
                   type="radio"
                   name="scheduleMode"
                   className="sr-only"
                   checked={scheduleMode === 'now'}
+                  disabled={disableStartNow || matchStartFieldsLocked}
                   onChange={() => setScheduleMode('now')}
                 />
                 <div
@@ -541,6 +562,12 @@ export function MatchFormCreateFields({
             </div>
           </div>
         </div>
+
+        {disableStartNow && startNowDisabledHint ? (
+          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-950">
+            {startNowDisabledHint}
+          </p>
+        ) : null}
 
         {scheduleMode === 'later' && (
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">

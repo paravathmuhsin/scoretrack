@@ -2,7 +2,7 @@ import { humanizeResultSidesInText } from '../lib/humanizeResultText'
 import { matchCardRowContent } from '../lib/scoreLineFormat'
 import { teamAvatarLabel } from '../lib/teamAvatarLabel'
 import { MatchCardScoreRwOvers } from './MatchCardScoreRwOvers'
-import { opp, type ReplayConfig, type ReplayState } from '../scoring/engine'
+import { currentInnings, opp, type ReplayConfig, type ReplayState } from '../scoring/engine'
 import type { MatchTeamSnapshot, Side } from '../types/models'
 
 export type MatchScorecardProps = {
@@ -108,6 +108,9 @@ export function MatchScorecard({
   /** First innings side while chase is live — same de-emphasis as score page `.score-live-side--completed-innings`. */
   const completedInningsSide: Side | null =
     state.innings2 && !state.matchComplete ? state.innings1.battingSide : null
+  const currentBattingSide: Side | null = !state.matchComplete
+    ? currentInnings(state).battingSide
+    : null
 
   return (
     <div className={'match-scorecard' + (listingLayout ? ' match-scorecard--listing' : '')}>
@@ -149,6 +152,9 @@ export function MatchScorecard({
         row={rowA}
         loser={loserSide === rowA.side}
         completedInnings={completedInningsSide === rowA.side}
+        inactiveBatting={
+          currentBattingSide != null && rowA.side !== currentBattingSide
+        }
       />
       <ScorecardRow
         homeName={homeName}
@@ -158,6 +164,9 @@ export function MatchScorecard({
         row={rowB}
         loser={loserSide === rowB.side}
         completedInnings={completedInningsSide === rowB.side}
+        inactiveBatting={
+          currentBattingSide != null && rowB.side !== currentBattingSide
+        }
       />
 
       {listingLayout && listingLiveFooter && !state.matchComplete && (
@@ -187,6 +196,7 @@ function ScorecardRow({
   awayTeam,
   loser,
   completedInnings,
+  inactiveBatting,
 }: {
   row: RowModel
   homeName: string
@@ -195,6 +205,8 @@ function ScorecardRow({
   awayTeam?: Pick<MatchTeamSnapshot, 'name' | 'shortName'>
   loser?: boolean
   completedInnings?: boolean
+  /** Team not currently batting (yet to bat or innings complete while chase is live). */
+  inactiveBatting?: boolean
 }) {
   const name = sideName(row.side, homeName, awayName)
   const snap = row.side === 'home' ? homeTeam : awayTeam
@@ -205,7 +217,8 @@ function ScorecardRow({
   const rowClass =
     'match-scorecard-row' +
     (loser ? ' match-scorecard-row--loser' : '') +
-    (completedInnings ? ' match-scorecard-row--completed-innings' : '')
+    (completedInnings ? ' match-scorecard-row--completed-innings' : '') +
+    (inactiveBatting ? ' match-scorecard-row--inactive-batting' : '')
 
   return (
     <div className={rowClass}>

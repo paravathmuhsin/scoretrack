@@ -7,6 +7,10 @@ import { useAuth } from '../auth/useAuth'
 import { Spinner } from '../components/Spinner'
 import { getDb } from '../firebase/config'
 import { deleteMatchCascade } from '../lib/deleteMatchCascade'
+import {
+  matchCanStartScoring,
+  participantApprovalStatusLabel,
+} from '../lib/matchParticipationInvite'
 import { compareMatchesOperationalOrder } from '../lib/matchListSort'
 import { usePendingWrites } from '../hooks/usePendingWrites'
 import { filterMatchesCreatedByUser } from '../lib/ownedByUser'
@@ -77,10 +81,27 @@ function completedTimestamp(m: MatchDoc): Timestamp | undefined {
   return m.completedAt ?? m.startedAt ?? m.scheduledAt
 }
 
+function participantApprovalBadgeClass(
+  status: MatchDoc['participantApprovalStatus'],
+): string {
+  switch (status) {
+    case 'pending':
+      return 'bg-amber-100 text-amber-800'
+    case 'rejected':
+      return 'bg-rose-100 text-rose-800'
+    case 'expired':
+      return 'bg-slate-100 text-slate-700'
+    default:
+      return 'bg-slate-100 text-slate-700'
+  }
+}
+
 function MyMatchCard({ m, onRequestDelete }: { m: Row; onRequestDelete?: () => void }) {
   const visual = statusVisual(m.status)
   const title = `${m.home.name} vs ${m.away.name}`
   const showListDelete = m.status !== 'scheduled' && Boolean(onRequestDelete)
+  const approvalLabel = participantApprovalStatusLabel(m.participantApprovalStatus)
+  const canStart = matchCanStartScoring(m)
 
   return (
     <li
@@ -154,16 +175,30 @@ function MyMatchCard({ m, onRequestDelete }: { m: Row; onRequestDelete?: () => v
                 <Pencil className="size-3.5" strokeWidth={2.2} aria-hidden />
                 Edit
               </Link>
-              <Link
-                to={`/app/matches/${m.id}/score`}
-                className={cn(
-                  buttonVariants({ variant: 'default', size: 'sm' }),
-                  'h-9 w-full justify-center gap-1.5 font-semibold !text-primary-foreground shadow-sm hover:!no-underline',
-                )}
-              >
-                <PlayCircle className="size-3.5" strokeWidth={2.2} aria-hidden />
-                Start Match
-              </Link>
+              {canStart ? (
+                <Link
+                  to={`/app/matches/${m.id}/score`}
+                  className={cn(
+                    buttonVariants({ variant: 'default', size: 'sm' }),
+                    'h-9 w-full justify-center gap-1.5 font-semibold !text-primary-foreground shadow-sm hover:!no-underline',
+                  )}
+                >
+                  <PlayCircle className="size-3.5" strokeWidth={2.2} aria-hidden />
+                  Start Match
+                </Link>
+              ) : approvalLabel ? (
+                <div className="flex w-full items-center justify-center px-1">
+                  <span
+                    className={cn(
+                      'inline-block rounded-md px-2 py-0.5 text-[0.65rem] font-bold tracking-wide',
+                      participantApprovalBadgeClass(m.participantApprovalStatus),
+                    )}
+                    role="status"
+                  >
+                    {approvalLabel.toUpperCase()}
+                  </span>
+                </div>
+              ) : null}
             </>
           )}
           {m.status === 'live' && (

@@ -1,7 +1,10 @@
 import { Pencil, Plus, Users, CalendarDays, MapPin } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
+import { getDb } from '../firebase/config'
 import { useSelectableUserTeams } from '../hooks/useSelectableUserTeams'
+import { ensureTeamNumber, formatTeamNumber } from '../lib/teamNumber'
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -33,6 +36,23 @@ function teamEditHref(teamId: string, ownerUid: string): string {
 export function TeamsPage() {
   const { user } = useAuth()
   const { teams, loading } = useSelectableUserTeams()
+  const backfillStarted = useRef(false)
+
+  useEffect(() => {
+    if (!user || loading || backfillStarted.current) return
+    const ownedMissing = teams.filter((t) => !t.isCoOwned && t.teamNumber == null)
+    if (ownedMissing.length === 0) return
+    backfillStarted.current = true
+    void (async () => {
+      for (const t of ownedMissing) {
+        try {
+          await ensureTeamNumber(getDb(), user.uid, t.id)
+        } catch {
+          /* ignore per-team failures */
+        }
+      }
+    })()
+  }, [user, loading, teams])
 
   if (!user) return null
 
@@ -101,6 +121,14 @@ export function TeamsPage() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-bold text-slate-900">{team.name}</p>
+                  {team.teamNumber != null ? (
+                    <p className="mt-0.5 text-xs font-medium text-slate-500">
+                      Team ID{' '}
+                      <span className="font-mono font-semibold text-slate-700">
+                        {formatTeamNumber(team.teamNumber)}
+                      </span>
+                    </p>
+                  ) : null}
                   {team.isCoOwned ? (
                     <p className="mt-0.5">
                       <span className="inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">

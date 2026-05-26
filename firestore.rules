@@ -33,10 +33,153 @@ service cloud.firestore {
         && data.publicId.size() > 0;
     }
 
+  /** Public home listing — pending/rejected/expired external invites stay private. */
+    function matchPublicListingAllowed(data) {
+      return data.isPublic == true
+        && (
+          !data.keys().hasAny(['participantApprovalStatus'])
+          || data.participantApprovalStatus == 'accepted'
+        );
+    }
+
+    function matchParticipationInviteData(inviteId) {
+      return get(/databases/$(database)/documents/matchParticipationInvites/$(inviteId)).data;
+    }
+
+    function isMatchParticipationInviteParty(inviteId) {
+      return authed()
+        && exists(/databases/$(database)/documents/matchParticipationInvites/$(inviteId))
+        && (
+          matchParticipationInviteData(inviteId).createdBy == request.auth.uid
+          || matchParticipationInviteData(inviteId).teamOwnerUid == request.auth.uid
+          || isUidInTeamOwnerIds(
+            matchParticipationInviteData(inviteId).teamOwnerUid,
+            matchParticipationInviteData(inviteId).teamId,
+            request.auth.uid,
+          )
+        );
+    }
+
+    function tournamentTeamLinkInviteData(inviteId) {
+      return get(/databases/$(database)/documents/tournamentTeamLinkInvites/$(inviteId)).data;
+    }
+
+    function isTournamentTeamLinkInviteParty(inviteId) {
+      return authed()
+        && exists(/databases/$(database)/documents/tournamentTeamLinkInvites/$(inviteId))
+        && (
+          tournamentTeamLinkInviteData(inviteId).createdBy == request.auth.uid
+          || tournamentTeamLinkInviteData(inviteId).teamOwnerUid == request.auth.uid
+          || isUidInTeamOwnerIds(
+            tournamentTeamLinkInviteData(inviteId).teamOwnerUid,
+            tournamentTeamLinkInviteData(inviteId).teamId,
+            request.auth.uid,
+          )
+        );
+    }
+
+    function validTeamNumberField() {
+      return request.resource.data.teamNumber is number
+        && request.resource.data.teamNumber >= 100000
+        && request.resource.data.teamNumber <= 999999;
+    }
+
+    function ownerSetsTeamNumberOnce(teamPathUid) {
+      return authed()
+        && request.auth.uid == teamPathUid
+        && !resource.data.keys().hasAny(['teamNumber'])
+        && request.resource.data.keys().hasAny(['teamNumber'])
+        && validTeamNumberField()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['teamNumber']);
+    }
+
+    function ownerCreatesTeamWithNumber(teamPathUid) {
+      return authed()
+        && request.auth.uid == teamPathUid
+        && request.resource.data.keys().hasAny(['teamNumber'])
+        && validTeamNumberField();
+    }
+
+    function teamHasTeamNumberForLookup() {
+      return resource.data.keys().hasAny(['teamNumber'])
+        && resource.data.teamNumber is number
+        && resource.data.teamNumber >= 100000
+        && resource.data.teamNumber <= 999999;
+    }
+
+    function userMatchesPendingParticipantAt(index) {
+      return resource.data.pendingParticipantTeams.size() > index
+        && (
+          request.auth.uid == resource.data.pendingParticipantTeams[index].ownerUid
+          || isUidInTeamOwnerIds(
+            resource.data.pendingParticipantTeams[index].ownerUid,
+            resource.data.pendingParticipantTeams[index].teamId,
+            request.auth.uid,
+          )
+        );
+    }
+
+    function userIsPendingParticipantInvitee() {
+      return (
+        resource.data.keys().hasAny(['participantInviteeUids'])
+        && resource.data.participantInviteeUids is list
+        && request.auth.uid in resource.data.participantInviteeUids
+      ) || (
+        resource.data.keys().hasAny(['pendingParticipantTeams'])
+        && resource.data.pendingParticipantTeams is list
+        && resource.data.pendingParticipantTeams.size() > 0
+        && (
+          userMatchesPendingParticipantAt(0)
+          || userMatchesPendingParticipantAt(1)
+        )
+      );
+    }
+
+    function canActOnParticipantApprovalMatch() {
+      return resource.data.createdBy == request.auth.uid
+        || userIsPendingParticipantInvitee();
+    }
+
+    function matchParticipantApprovalResolve() {
+      return authed()
+        && canActOnParticipantApprovalMatch()
+        && resource.data.keys().hasAny(['participantApprovalStatus'])
+        && resource.data.participantApprovalStatus == 'pending'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'participantApprovalStatus',
+          'pendingParticipantTeams',
+          'participantInviteeUids',
+        ])
+        && (
+          request.resource.data.participantApprovalStatus == 'accepted'
+          || request.resource.data.participantApprovalStatus == 'rejected'
+          || request.resource.data.participantApprovalStatus == 'expired'
+          || (
+            request.resource.data.participantApprovalStatus == 'pending'
+            && request.resource.data.keys().hasAny(['pendingParticipantTeams'])
+            && request.resource.data.pendingParticipantTeams is list
+          )
+        );
+    }
+
+    function canReadMatchAsParticipantInvitee() {
+      return authed() && userIsPendingParticipantInvitee();
+    }
+
+    function isMatchParticipationInviteReadable() {
+      return resource.data.createdBy == request.auth.uid
+        || resource.data.teamOwnerUid == request.auth.uid
+        || isUidInTeamOwnerIds(
+          resource.data.teamOwnerUid,
+          resource.data.teamId,
+          request.auth.uid,
+        );
+    }
+
     function canAccessMatchSubcollection(mid) {
       return exists(/databases/$(database)/documents/matches/$(mid))
         && (
-          matchData(mid).isPublic == true
+          matchPublicListingAllowed(matchData(mid))
           || matchHasLivePublicId(matchData(mid))
           || (authed() && matchData(mid).createdBy == request.auth.uid)
           || matchRosterVisibleToAuth(mid)
@@ -276,6 +419,36 @@ service cloud.firestore {
         );
     }
 
+    function matchParticipationNotificationCreate(recipientUid) {
+      return request.resource.data.type == 'match_participation'
+        && request.resource.data.kind is string
+        && request.resource.data.inviteId is string
+        && request.resource.data.matchId is string
+        && request.resource.data.teamId is string
+        && request.resource.data.teamName is string
+        && request.resource.data.teamNumber is number
+        && request.resource.data.side is string
+        && request.resource.data.otherUid is string
+        && request.resource.data.scheduledAt is timestamp
+        && request.resource.data.createdAt is timestamp
+        && isMatchParticipationInviteParty(request.resource.data.inviteId);
+    }
+
+    function tournamentTeamLinkNotificationCreate(recipientUid) {
+      return request.resource.data.type == 'tournament_team_link'
+        && request.resource.data.kind is string
+        && request.resource.data.inviteId is string
+        && request.resource.data.tournamentId is string
+        && request.resource.data.tournamentName is string
+        && request.resource.data.linkedTeamId is string
+        && request.resource.data.teamId is string
+        && request.resource.data.teamName is string
+        && request.resource.data.teamNumber is int
+        && request.resource.data.otherUid is string
+        && request.resource.data.createdAt is timestamp
+        && isTournamentTeamLinkInviteParty(request.resource.data.inviteId);
+    }
+
     function ownershipTransferNotificationCreate(recipientUid) {
       return request.resource.data.type == 'ownership_transfer'
         && request.resource.data.kind is string
@@ -382,7 +555,13 @@ service cloud.firestore {
           && isTeamCoOwner(resource.data.ownerUid, resource.data.teamId)
         )
       );
-      allow delete: if authed() && resource.data.ownerUid == request.auth.uid;
+      allow delete: if authed() && (
+        resource.data.ownerUid == request.auth.uid
+        || (
+          resource.data.teamId is string
+          && isTeamCoOwner(resource.data.ownerUid, resource.data.teamId)
+        )
+      );
     }
 
     match /teamOwnershipTransfers/{transferId} {
@@ -454,14 +633,17 @@ service cloud.firestore {
             && userTeamJoinInviteData(resource.data.joinInviteToken).ownerUid == uid
             && userTeamJoinInviteData(resource.data.joinInviteToken).teamId == teamId
           )
-          || pendingTransferRecipientForTeam(uid, teamId);
+          || pendingTransferRecipientForTeam(uid, teamId)
+          || (authed() && teamHasTeamNumberForLookup());
 
-        allow create: if authed() && request.auth.uid == uid;
+        allow create: if authed() && request.auth.uid == uid
+          && (!request.resource.data.keys().hasAny(['teamNumber']) || ownerCreatesTeamWithNumber(uid));
         allow delete: if authed() && request.auth.uid == uid
           || pendingTransferRecipientForTeam(uid, teamId);
 
         allow update: if ownerSetsPendingOwnershipTransfer(uid)
           || ownerClearsPendingOwnershipTransfer(uid)
+          || ownerSetsTeamNumberOnce(uid)
           || (
             authed()
             && request.auth.uid == uid
@@ -505,6 +687,8 @@ service cloud.firestore {
           || ownershipTransferNotificationCreate(uid)
           || teamCoOwnerNotificationCreate(uid)
           || teamRosterNotificationCreate(uid)
+          || matchParticipationNotificationCreate(uid)
+          || tournamentTeamLinkNotificationCreate(uid)
         );
         allow update: if authed()
           && request.auth.uid == uid
@@ -518,6 +702,116 @@ service cloud.firestore {
           )
         );
       }
+    }
+
+    match /teamNumbers/{num} {
+      allow read: if authed();
+      allow create: if authed()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.teamId is string
+        && request.resource.data.teamId.size() > 0
+        && userTeamDocExistsFor(request.auth.uid, request.resource.data.teamId)
+        && int(num) >= 100000
+        && int(num) <= 999999;
+      allow update, delete: if false;
+    }
+
+    match /matchParticipationInvites/{inviteId} {
+      allow get: if isMatchParticipationInviteParty(inviteId);
+      allow list: if authed() && isMatchParticipationInviteReadable();
+      allow create: if authed()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.status == 'pending';
+      allow update: if isMatchParticipationInviteParty(inviteId)
+        && resource.data.status == 'pending'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status',
+          'resolvedAt',
+          'respondedByUid',
+        ])
+        && (
+          (
+            request.resource.data.status == 'accepted'
+            && (
+              request.auth.uid == resource.data.teamOwnerUid
+              || isUidInTeamOwnerIds(
+                resource.data.teamOwnerUid,
+                resource.data.teamId,
+                request.auth.uid,
+              )
+            )
+          )
+          || (
+            request.resource.data.status == 'rejected'
+            && (
+              request.auth.uid == resource.data.teamOwnerUid
+              || isUidInTeamOwnerIds(
+                resource.data.teamOwnerUid,
+                resource.data.teamId,
+                request.auth.uid,
+              )
+            )
+          )
+          || (
+            request.resource.data.status == 'expired'
+            && (
+              resource.data.createdBy == request.auth.uid
+              || request.auth.uid == resource.data.teamOwnerUid
+              || isUidInTeamOwnerIds(
+                resource.data.teamOwnerUid,
+                resource.data.teamId,
+                request.auth.uid,
+              )
+            )
+          )
+        );
+      allow delete: if false;
+    }
+
+    match /tournamentTeamLinkInvites/{inviteId} {
+      allow read: if isTournamentTeamLinkInviteParty(inviteId);
+      allow create: if authed()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.status == 'pending';
+      allow update: if isTournamentTeamLinkInviteParty(inviteId)
+        && resource.data.status == 'pending'
+        && (
+          (
+            request.resource.data.status == 'accepted'
+            && (
+              request.auth.uid == resource.data.teamOwnerUid
+              || isUidInTeamOwnerIds(
+                resource.data.teamOwnerUid,
+                resource.data.teamId,
+                request.auth.uid,
+              )
+            )
+          )
+          || (
+            request.resource.data.status == 'rejected'
+            && (
+              request.auth.uid == resource.data.teamOwnerUid
+              || isUidInTeamOwnerIds(
+                resource.data.teamOwnerUid,
+                resource.data.teamId,
+                request.auth.uid,
+              )
+            )
+          )
+          || (
+            request.resource.data.status == 'expired'
+            && (
+              resource.data.createdBy == request.auth.uid
+              || request.auth.uid == resource.data.teamOwnerUid
+              || isUidInTeamOwnerIds(
+                resource.data.teamOwnerUid,
+                resource.data.teamId,
+                request.auth.uid,
+              )
+            )
+          )
+        );
+      allow delete: if false;
     }
 
     /** Searchable display names for adding registered users to squads. */
@@ -542,8 +836,40 @@ service cloud.firestore {
         allow read: if tournamentPublic(tid) || tournamentOwner(tid);
         allow create: if tournamentOwner(tid)
           && request.resource.data.userTeamId is string
-          && userTeamDocExistsFor(request.auth.uid, request.resource.data.userTeamId);
-        allow update, delete: if tournamentOwner(tid);
+          && (
+            (
+              !request.resource.data.keys().hasAny(['userTeamOwnerUid'])
+              && userTeamDocExistsFor(request.auth.uid, request.resource.data.userTeamId)
+            )
+            || (
+              request.resource.data.keys().hasAny(['userTeamOwnerUid'])
+              && request.resource.data.userTeamOwnerUid is string
+              && request.resource.data.userTeamOwnerUid != request.auth.uid
+              && request.resource.data.linkApprovalStatus == 'pending'
+              && request.resource.data.keys().hasAny(['teamNumber'])
+              && userTeamDocExistsFor(
+                request.resource.data.userTeamOwnerUid,
+                request.resource.data.userTeamId,
+              )
+            )
+          );
+        allow update: if tournamentOwner(tid)
+          || (
+            authed()
+            && resource.data.keys().hasAny(['userTeamOwnerUid'])
+            && resource.data.userTeamOwnerUid is string
+            && resource.data.linkApprovalStatus == 'pending'
+            && request.resource.data.linkApprovalStatus == 'accepted'
+            && (
+              request.auth.uid == resource.data.userTeamOwnerUid
+              || isUidInTeamOwnerIds(
+                resource.data.userTeamOwnerUid,
+                resource.data.userTeamId,
+                request.auth.uid,
+              )
+            )
+          );
+        allow delete: if tournamentOwner(tid);
       }
 
       match /groups/{gid} {
@@ -577,16 +903,18 @@ service cloud.firestore {
        * Any match with a `publicId` is readable via `/live/:publicId` without sign-in.
        * Private listing: creator, tournament organiser, squad, or parent squad.
        */
-      allow read: if resource.data.isPublic == true
+      allow read: if matchPublicListingAllowed(resource.data)
         || matchHasLivePublicId(resource.data)
         || (authed() && resource.data.createdBy == request.auth.uid)
         || tournamentOrganiserReadsThisMatch()
         || matchRosterVisibleOnResource()
-        || matchParentSquadVisibleOnResource();
+        || matchParentSquadVisibleOnResource()
+        || canReadMatchAsParticipantInvitee();
 
       allow create: if authed() && request.resource.data.createdBy == request.auth.uid;
 
-      allow update: if authed() && resource.data.createdBy == request.auth.uid;
+      allow update: if authed() && resource.data.createdBy == request.auth.uid
+        || matchParticipantApprovalResolve();
 
       allow delete: if authed() && (
         resource.data.createdBy == request.auth.uid

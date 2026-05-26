@@ -159,7 +159,7 @@ function MobileAccountDrawer({
               <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
                 Notifications
                 {unreadCount > 0 ? (
-                  <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+                  <span className="flex min-h-[22px] min-w-[22px] shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-bold leading-none text-primary-foreground">
                     {unreadCount > 9 ? "9+" : unreadCount}
                   </span>
                 ) : null}
@@ -246,7 +246,7 @@ function MobileBottomTabs({ items }: { items: NavItem[] }) {
 function MenuUnreadBadge({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
-    <span className="pointer-events-none absolute -top-0.5 -right-0.5 flex min-w-[18px] items-center justify-center rounded-full bg-primary px-1 py-0.5 text-[10px] font-bold leading-none text-primary-foreground">
+    <span className="pointer-events-none absolute -right-1 -top-1 flex min-h-[22px] min-w-[22px] items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-bold leading-none text-primary-foreground">
       {count > 9 ? "9+" : count}
     </span>
   );

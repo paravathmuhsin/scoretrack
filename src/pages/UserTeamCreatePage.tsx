@@ -8,6 +8,7 @@ import { notifyNewCoOwners } from '../lib/coOwnerNotifications'
 import { syncAccessibleSquadsAfterRosterChange } from '../lib/accessibleSquads'
 import { buildMemberIdsFromPlayers } from '../lib/matchRosterIndex'
 import { normalizeOwnerIds } from '../lib/teamOwnerIds'
+import { allocateTeamNumber } from '../lib/teamNumber'
 import { cn } from '@/lib/utils'
 import type { TeamDoc } from '../types/models'
 
@@ -75,6 +76,12 @@ export function UserTeamCreatePage() {
             nextOwnerIds: ownerIds,
             newCoOwnerNames,
           })
+          try {
+            await allocateTeamNumber(getDb(), user.uid, ref.id)
+          } catch (allocErr) {
+            const msg = allocErr instanceof Error ? allocErr.message : 'Could not assign team ID.'
+            throw new Error(`Team created, but ${msg}`)
+          }
           nav('/app/teams')
         }}
       />

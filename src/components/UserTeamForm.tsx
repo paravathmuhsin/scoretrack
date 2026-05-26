@@ -7,6 +7,7 @@ import {
   mergeProtectedRosterForCoOwnerSave,
   normalizeOwnerIds,
 } from '../lib/teamOwnerIds'
+import { formatTeamNumber } from '../lib/teamNumber'
 import { AddPlayersModal } from './AddPlayersModal'
 import { BtnPendingLabel } from './Spinner'
 import { Button } from '@/components/ui/button'
@@ -204,6 +205,15 @@ export function UserTeamForm({
             title="Team details"
             subtitle="Add basic information about your team"
           />
+          {initial?.teamNumber != null ? (
+            <p className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+              Team ID{' '}
+              <span className="font-mono font-semibold text-slate-900">
+                {formatTeamNumber(initial.teamNumber)}
+              </span>
+              <span className="text-slate-500"> — share this for others to find your squad.</span>
+            </p>
+          ) : null}
           <div className="space-y-3 pt-1">
             <IconField icon={User}>
               <Input

@@ -83,6 +83,7 @@ import { publicAppUrl } from '../lib/publicAppUrl'
 import { shareLink } from '../lib/shareLink'
 import { internalMatchSidesOverlap, rosterPlayersFromIds } from '../lib/internalMatchRoster'
 import { buildRosterPlayerIds } from '../lib/matchRosterIndex'
+import { matchCanStartScoring } from '../lib/matchParticipationInvite'
 import { buildSnapshotFromUserTeam } from '../lib/userTeamSnapshot'
 import {
   battersYetToPlayIds,
@@ -823,6 +824,10 @@ export function ScoreMatchPage() {
 
   async function executeStartMatch() {
     if (!id || !match) return
+    if (!matchCanStartScoring(match)) {
+      setError('This match cannot start until the invited team accepts.')
+      return
+    }
     setError(null)
     const toss: TossInfo = { winnerSide: tossWinner, elected: tossElected }
     const innings1BattingSide: Side = toss.elected === 'bat' ? toss.winnerSide : opp(toss.winnerSide)
@@ -1644,6 +1649,22 @@ export function ScoreMatchPage() {
       {match.status === 'scheduled' && (
         <>
         <div className="mx-auto w-full max-w-3xl space-y-4 pb-2">
+          {!matchCanStartScoring(match) ? (
+            <div
+              className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              role="status"
+            >
+              {match.participantApprovalStatus === 'pending' && (
+                <p>Waiting for the invited team to accept this match.</p>
+              )}
+              {match.participantApprovalStatus === 'rejected' && (
+                <p>The invited team declined this match. It cannot be started.</p>
+              )}
+              {match.participantApprovalStatus === 'expired' && (
+                <p>This match invitation expired before kickoff.</p>
+              )}
+            </div>
+          ) : null}
           <Link
             to="/app/matches"
             className={cn(
@@ -1676,6 +1697,7 @@ export function ScoreMatchPage() {
             </div>
           </div>
 
+        {matchCanStartScoring(match) ? (
         <form
           onSubmit={(e) => {
             e.preventDefault()
@@ -2213,10 +2235,11 @@ export function ScoreMatchPage() {
             </div>
           </div>
         </form>
+        ) : null}
         </div>
         <MatchPlayingSquadModal
           key={squadPickerSide ?? 'closed'}
-          open={squadPickerSide !== null}
+          open={squadPickerSide !== null && matchCanStartScoring(match)}
           onClose={() => setSquadPickerSide(null)}
           teamName={squadPickerSide === 'away' ? match.away.name : match.home.name}
           players={

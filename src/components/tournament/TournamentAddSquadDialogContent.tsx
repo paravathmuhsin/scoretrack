@@ -1,7 +1,9 @@
 import { Loader2, Plus, Search, Users, X } from 'lucide-react'
 import type { RefObject } from 'react'
 import { Link } from 'react-router-dom'
+import type { SelectableUserTeam } from '../../hooks/useSelectableUserTeams'
 import type { TeamDoc } from '../../types/models'
+import { GlobalTeamSearchPanel } from '../GlobalTeamSearchPanel'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
@@ -31,6 +33,7 @@ export type TournamentAddSquadDialogContentProps = {
   linkingSquadId: string | null
   error: string | null
   onSelectSquad: (teamId: string) => void
+  onSelectGlobalSquad?: (team: SelectableUserTeam) => void
   onClose: () => void
 }
 
@@ -47,6 +50,7 @@ export function TournamentAddSquadDialogContent({
   linkingSquadId,
   error,
   onSelectSquad,
+  onSelectGlobalSquad,
   onClose,
 }: TournamentAddSquadDialogContentProps) {
   const subtitle =
@@ -240,6 +244,14 @@ export function TournamentAddSquadDialogContent({
                 </ul>
               )}
             </div>
+
+            {onSelectGlobalSquad ? (
+              <GlobalTeamSearchPanel
+                className="shrink-0"
+                disabled={writePending}
+                onSelect={(team) => onSelectGlobalSquad(team)}
+              />
+            ) : null}
 
             {error ? (
               <p className="shrink-0 text-sm text-destructive" role="alert">

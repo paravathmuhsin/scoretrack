@@ -13,6 +13,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
 import { NotificationRow } from '../components/NotificationRow'
 import { getDb } from '../firebase/config'
+import { expirePendingMatchInvites } from '../lib/matchParticipationInvite'
 import { markExpiredOwnershipTransfers } from '../lib/teamOwnershipTransfer'
 import type { UserNotificationDoc } from '../types/models'
 import { Button } from '@/components/ui/button'
@@ -30,7 +31,10 @@ export function NotificationsPage() {
 
   useEffect(() => {
     if (!user) return
-    void markExpiredOwnershipTransfers(getDb(), user.uid).catch(() => {
+    void Promise.all([
+      markExpiredOwnershipTransfers(getDb(), user.uid),
+      expirePendingMatchInvites(getDb()),
+    ]).catch(() => {
       /* non-blocking housekeeping */
     })
   }, [user])

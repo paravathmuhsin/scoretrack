@@ -3490,29 +3490,34 @@ html[data-obs-overlay='true'] body #root {
  * whole-row opacity + richer slate on children (reads better than flat gray alone).
  */
 .match-scorecard-row--completed-innings,
+.match-scorecard-row--inactive-batting,
 .match-scorecard-row--loser {
   opacity: 0.52;
 }
 
 .match-scorecard-row--completed-innings .match-scorecard-teamname,
+.match-scorecard-row--inactive-batting .match-scorecard-teamname,
 .match-scorecard-row--loser .match-scorecard-teamname {
   color: #475569;
   font-weight: 600;
 }
 
 .match-scorecard-row--completed-innings .match-scorecard-avatar,
+.match-scorecard-row--inactive-batting .match-scorecard-avatar,
 .match-scorecard-row--loser .match-scorecard-avatar {
   background: linear-gradient(145deg, #e8edf3, #d1dae6);
   color: #475569;
 }
 
 .match-scorecard-row--completed-innings .match-scorecard-score .match-scorecard-rw,
+.match-scorecard-row--inactive-batting .match-scorecard-score .match-scorecard-rw,
 .match-scorecard-row--loser .match-scorecard-score .match-scorecard-rw {
   color: #334155;
   font-weight: 700;
 }
 
 .match-scorecard-row--completed-innings .match-scorecard-score .match-scorecard-overs,
+.match-scorecard-row--inactive-batting .match-scorecard-score .match-scorecard-overs,
 .match-scorecard-row--loser .match-scorecard-score .match-scorecard-overs {
   color: #64748b;
   font-weight: 600;
@@ -3521,6 +3526,9 @@ html[data-obs-overlay='true'] body #root {
 .match-scorecard-row--completed-innings .match-scorecard-score,
 .match-scorecard-row--completed-innings .match-scorecard-score .muted,
 .match-scorecard-row--completed-innings .match-scorecard-score .match-scorecard-status,
+.match-scorecard-row--inactive-batting .match-scorecard-score,
+.match-scorecard-row--inactive-batting .match-scorecard-score .muted,
+.match-scorecard-row--inactive-batting .match-scorecard-score .match-scorecard-status,
 .match-scorecard-row--loser .match-scorecard-score,
 .match-scorecard-row--loser .match-scorecard-score .muted,
 .match-scorecard-row--loser .match-scorecard-score .match-scorecard-status {
@@ -3819,6 +3827,13 @@ a.segmented-filter-tab {
 
 .match-scorecard--listing .match-scorecard-listing-upcoming-teams {
   gap: 0.38rem;
+}
+
+.match-scorecard--listing .match-scorecard-listing-upcoming-teams .match-scorecard-teamname {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  line-height: 1.25;
 }
 
 .match-scorecard-listing-team-line {

@@ -2,6 +2,8 @@ import { CalendarDays, ChevronRight, House, Plus, Search, Users, X } from 'lucid
 import type { RefObject } from 'react'
 import { Link } from 'react-router-dom'
 import type { SelectableUserTeam } from '../hooks/useSelectableUserTeams'
+import { squadKey } from '../lib/teamNumber'
+import { GlobalTeamSearchPanel } from './GlobalTeamSearchPanel'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
@@ -23,9 +25,11 @@ export type MatchTeamPickerDialogContentProps = {
   searchInputRef: RefObject<HTMLInputElement | null>
   pickerOptions: SelectableUserTeam[]
   filteredPickerOptions: SelectableUserTeam[]
-  excludeId: string
+  excludeKey: string
   tournamentId: string | null | undefined
-  onSelectTeam: (teamId: string) => void
+  allowGlobalSearch?: boolean
+  onRegisterGlobalTeam?: (team: SelectableUserTeam) => void
+  onSelectTeam: (squadKeyValue: string) => void
   onClose: () => void
 }
 
@@ -37,8 +41,10 @@ export function MatchTeamPickerDialogContent({
   searchInputRef,
   pickerOptions,
   filteredPickerOptions,
-  excludeId,
+  excludeKey,
   tournamentId,
+  allowGlobalSearch = true,
+  onRegisterGlobalTeam,
   onSelectTeam,
   onClose,
 }: MatchTeamPickerDialogContentProps) {
@@ -56,7 +62,7 @@ export function MatchTeamPickerDialogContent({
   const emptyBody = (
     <div className="flex flex-col gap-4 px-5 py-4">
       <p className="text-sm leading-relaxed text-slate-600">
-        No squads available{excludeId ? ' (other side already uses that squad)' : ''}.{' '}
+        No squads available{excludeKey ? ' (other side already uses that squad)' : ''}.{' '}
         {tournamentId ? (
           <>
             Link squads on <strong>Tournament → Teams</strong> or open{' '}
@@ -131,10 +137,26 @@ export function MatchTeamPickerDialogContent({
       </div>
 
       {pickerOptions.length === 0 ? (
-        <>
-          {emptyBody}
-          {addTeamFooter}
-        </>
+        allowGlobalSearch && !tournamentId ? (
+          <>
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden px-5 py-4">
+              <GlobalTeamSearchPanel
+                className="shrink-0"
+                onSelect={(t) => {
+                  onRegisterGlobalTeam?.(t)
+                  onSelectTeam(squadKey(t.ownerUid, t.id))
+                  onClose()
+                }}
+              />
+            </div>
+            {addTeamFooter}
+          </>
+        ) : (
+          <>
+            {emptyBody}
+            {addTeamFooter}
+          </>
+        )
       ) : (
         <>
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden px-5 py-4">
@@ -159,7 +181,7 @@ export function MatchTeamPickerDialogContent({
 
             <p className="shrink-0 text-xs text-slate-400">Type to filter your squads by name.</p>
 
-            <p className="shrink-0 text-xs font-bold uppercase tracking-wider text-slate-400">All teams</p>
+            <p className="shrink-0 text-xs font-bold uppercase tracking-wider text-slate-400">My teams</p>
 
             <div
               className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pr-1"
@@ -174,7 +196,7 @@ export function MatchTeamPickerDialogContent({
                       <button
                         type="button"
                         className="flex min-h-[5rem] w-full items-center gap-3 rounded-xl border border-slate-100 bg-white px-3 py-3 text-left shadow-sm transition-colors hover:bg-slate-50/90"
-                        onClick={() => onSelectTeam(t.id)}
+                        onClick={() => onSelectTeam(squadKey(t.ownerUid, t.id))}
                       >
                         <div
                           className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary"
@@ -203,6 +225,17 @@ export function MatchTeamPickerDialogContent({
                 </ul>
               )}
             </div>
+
+            {allowGlobalSearch && !tournamentId ? (
+              <GlobalTeamSearchPanel
+                className="shrink-0"
+                onSelect={(t) => {
+                  onRegisterGlobalTeam?.(t)
+                  onSelectTeam(squadKey(t.ownerUid, t.id))
+                  onClose()
+                }}
+              />
+            ) : null}
           </div>
 
           {addTeamFooter}

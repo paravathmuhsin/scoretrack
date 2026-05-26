@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useTournamentListingMeta } from '../hooks/useTournamentListingMeta'
-import { formatMatchListingSchedule, teamAbbrevFromName } from '../lib/publicMatchCardUtils'
+import { formatMatchListingSchedule } from '../lib/publicMatchCardUtils'
 import { teamAvatarLabel } from '../lib/teamAvatarLabel'
 import type { MatchDoc } from '../types/models'
 
@@ -25,7 +25,7 @@ export function PublicUpcomingMatchCard({ match }: Props) {
                 <span className="match-scorecard-avatar" aria-hidden>
                   {teamAvatarLabel(side)}
                 </span>
-                <span className="match-scorecard-teamname">{teamAbbrevFromName(side.name)}</span>
+                <span className="match-scorecard-teamname">{side.name}</span>
               </div>
             ))}
           </div>

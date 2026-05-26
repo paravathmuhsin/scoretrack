@@ -152,6 +152,17 @@ export interface MatchDoc {
   parentTeamMemberIds?: string[]
   /** Union of home.players + away.players (squad roster, not playing XI). */
   rosterPlayerIds?: string[]
+  /** When an external squad must accept before scoring / public listing. */
+  participantApprovalStatus?: 'pending' | 'accepted' | 'rejected' | 'expired'
+  /** Squads awaiting acceptance (friendly global picks). */
+  pendingParticipantTeams?: Array<{
+    side: Side
+    ownerUid: string
+    teamId: string
+    teamNumber: number
+  }>
+  /** Primary owners + co-owners who may accept/reject (cleared when resolved). */
+  participantInviteeUids?: string[]
 }
 
 /** Persisted effective Player of the Match after the match is completed. */
@@ -318,10 +329,17 @@ export interface TournamentGroupDoc {
   createdAt: Timestamp
 }
 
+export type LinkApprovalStatus = 'pending' | 'accepted' | 'rejected' | 'expired'
+
 /** `tournaments/{tid}/linkedTeams/{linkId}` — tournament references a My team squad. */
 export interface TournamentLinkedTeamDoc {
   /** Doc id under `users/{ownerUid}/teams`. */
   userTeamId: string
+  /** Squad owner path; omit when organiser owns the squad (legacy). */
+  userTeamOwnerUid?: string
+  teamNumber?: number
+  /** Omit or `accepted` for organiser-owned / legacy links. */
+  linkApprovalStatus?: LinkApprovalStatus
   /** Denormalized for display; may be stale if the squad is renamed under My teams. */
   teamName?: string
   /** Denormalized squad short code for compact avatars (e.g. tournament team cards). */
@@ -351,6 +369,8 @@ export interface TeamDoc {
   ownerIds?: string[]
   /** Active ownership transfer (`teamOwnershipTransfers/{id}`) while pending. */
   pendingOwnershipTransferId?: string | null
+  /** Unique 6-digit id for global search (100000–999999). */
+  teamNumber?: number
 }
 
 /** `users/{uid}/accessibleSquads/{ownerUid}_{teamId}` — squads the user joined as a player. */
@@ -438,11 +458,95 @@ export type TeamRosterNotification = {
   readAt?: Timestamp
 }
 
+export type MatchParticipationNotificationKind =
+  | 'invite_received'
+  | 'invite_accepted'
+  | 'invite_rejected'
+  | 'invite_expired'
+
+export type MatchParticipationNotification = {
+  type: 'match_participation'
+  kind: MatchParticipationNotificationKind
+  inviteId: string
+  matchId: string
+  teamId: string
+  teamName: string
+  teamNumber: number
+  side: Side
+  otherUid: string
+  otherDisplayName?: string
+  scheduledAt: Timestamp
+  createdAt: Timestamp
+  readAt?: Timestamp
+}
+
+export type TournamentTeamLinkNotificationKind =
+  | 'link_received'
+  | 'link_accepted'
+  | 'link_rejected'
+  | 'link_expired'
+
+export type TournamentTeamLinkNotification = {
+  type: 'tournament_team_link'
+  kind: TournamentTeamLinkNotificationKind
+  inviteId: string
+  tournamentId: string
+  tournamentName: string
+  linkedTeamId: string
+  teamId: string
+  teamName: string
+  teamNumber: number
+  otherUid: string
+  otherDisplayName?: string
+  createdAt: Timestamp
+  readAt?: Timestamp
+}
+
 /** `users/{uid}/notifications/{notificationId}` */
 export type UserNotificationDoc =
   | OwnershipTransferNotification
   | TeamCoOwnerNotification
   | TeamRosterNotification
+  | MatchParticipationNotification
+  | TournamentTeamLinkNotification
+
+export type ParticipationInviteStatus = 'pending' | 'accepted' | 'rejected' | 'expired'
+
+/** `matchParticipationInvites/{inviteId}` */
+export interface MatchParticipationInviteDoc {
+  matchId: string
+  side: Side
+  teamOwnerUid: string
+  teamId: string
+  teamNumber: number
+  teamName: string
+  createdBy: string
+  status: ParticipationInviteStatus
+  scheduledAt: Timestamp
+  expiresAt: Timestamp
+  createdAt: Timestamp
+  resolvedAt?: Timestamp
+  respondedByUid?: string
+  creatorDisplayName?: string
+}
+
+/** `tournamentTeamLinkInvites/{inviteId}` */
+export interface TournamentTeamLinkInviteDoc {
+  tournamentId: string
+  tournamentName: string
+  linkedTeamId: string
+  teamOwnerUid: string
+  teamId: string
+  teamNumber: number
+  teamName: string
+  createdBy: string
+  status: ParticipationInviteStatus
+  createdAt: Timestamp
+  expiresAt?: Timestamp
+  resolvedAt?: Timestamp
+  respondedByUid?: string
+  organiserDisplayName?: string
+}
 
 /** `userTeamJoinInvites/{token}` — shareable join link metadata (token equals `TeamDoc.joinInviteToken`). */
 export interface UserTeamJoinInviteDoc {

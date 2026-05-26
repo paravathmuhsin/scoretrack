@@ -33,6 +33,13 @@ import {
   buildTemporarySideSnapshot,
 } from '../lib/internalMatchSnapshot'
 import { buildRosterPlayerIds } from '../lib/matchRosterIndex'
+import { createMatchParticipationInvites } from '../lib/matchParticipationInvite'
+import {
+  isAccessibleSquad,
+  parseSquadKey,
+  squadKey,
+  teamParticipantRecipientUids,
+} from '../lib/teamNumber'
 import { buildSnapshotFromUserTeam } from '../lib/userTeamSnapshot'
 import {
   canEditMatchPlayingConstraints,
@@ -72,7 +79,8 @@ function resolvePickFromStored(side: MatchTeamSnapshot, myTeams: SelectableUserT
     const hit = myTeams.find(
       (x) => x.id === side.userTeamId && (!owner || x.ownerUid === owner),
     )
-    if (hit) return hit.id
+    if (hit) return squadKey(hit.ownerUid, hit.id)
+    if (owner) return squadKey(owner, side.userTeamId)
   }
   const hit = myTeams.find((x) => x.name.trim() === side.name.trim())
   if (!hit) return ''
@@ -81,7 +89,36 @@ function resolvePickFromStored(side: MatchTeamSnapshot, myTeams: SelectableUserT
   const b = new Set(side.players.map((p) => p.playerId))
   if (a.size !== b.size) return ''
   for (const id of a) if (!b.has(id)) return ''
-  return hit.id
+  return squadKey(hit.ownerUid, hit.id)
+}
+
+function previewFromMatchSide(side: MatchTeamSnapshot): TeamDoc & { id: string } {
+  return {
+    id: side.userTeamId ?? '',
+    name: side.name,
+    players: side.players,
+    memberIds: side.players.map((p) => p.playerId),
+  }
+}
+
+function pickMatchesStoredSide(pick: string, side: MatchTeamSnapshot): boolean {
+  const parsed = parseSquadKey(pick)
+  if (!parsed || !side.userTeamId) return false
+  if (side.userTeamOwnerUid) {
+    return parsed.ownerUid === side.userTeamOwnerUid && parsed.teamId === side.userTeamId
+  }
+  return parsed.teamId === side.userTeamId
+}
+
+function externalSideNeedsApproval(
+  uid: string,
+  side: MatchTeamSnapshot,
+  team?: SelectableUserTeam,
+): boolean {
+  if (team) return !isAccessibleSquad(uid, team.ownerUid, team)
+  const ownerUid = side.userTeamOwnerUid
+  if (!ownerUid) return false
+  return !isAccessibleSquad(uid, ownerUid, { ownerIds: [] })
 }
 
 export function MatchFormPage() {
@@ -106,6 +143,7 @@ export function MatchFormPage() {
 
   const [pickA, setPickA] = useState('')
   const [pickB, setPickB] = useState('')
+  const [extraTeams, setExtraTeams] = useState<Record<string, SelectableUserTeam>>({})
   const [pickerSide, setPickerSide] = useState<'A' | 'B' | null>(null)
   const [pickerSearch, setPickerSearch] = useState('')
 
@@ -121,6 +159,11 @@ export function MatchFormPage() {
   const [isPublic, setIsPublic] = useState(false)
   const [isInternalChoice, setIsInternalChoice] = useState(false)
   const [editIsInternal, setEditIsInternal] = useState(false)
+  const [editHomeSnapshot, setEditHomeSnapshot] = useState<MatchTeamSnapshot | null>(null)
+  const [editAwaySnapshot, setEditAwaySnapshot] = useState<MatchTeamSnapshot | null>(null)
+  const [editParticipantApprovalStatus, setEditParticipantApprovalStatus] = useState<
+    MatchDoc['participantApprovalStatus']
+  >(undefined)
   const [parentOwnerUid, setParentOwnerUid] = useState('')
   const [parentTeamId, setParentTeamId] = useState('')
   const [sideAName, setSideAName] = useState('')
@@ -215,6 +258,9 @@ export function MatchFormPage() {
       setOversPerBowler(m.oversPerBowler ?? 4)
       setIsPublic(m.isPublic)
       setEditIsInternal(m.isInternalMatch === true)
+      setEditHomeSnapshot(m.home)
+      setEditAwaySnapshot(m.away)
+      setEditParticipantApprovalStatus(m.participantApprovalStatus)
       setFreeHitOnNoBall(m.freeHitOnNoBall === true)
       setVenue(typeof m.venue === 'string' ? m.venue : '')
       if (m.scheduledAt && 'toDate' in m.scheduledAt) {
@@ -229,15 +275,38 @@ export function MatchFormPage() {
   }, [id, isEdit])
 
   useEffect(() => {
-    if (!isEdit || !id || myTeams.length === 0) return
+    if (!isEdit || !id) return
     void (async () => {
       const snap = await getDoc(doc(getDb(), 'matches', id))
       if (!snap.exists()) return
       const m = snap.data() as MatchDoc
       setPickA(resolvePickFromStored(m.home, myTeams))
       setPickB(resolvePickFromStored(m.away, myTeams))
+
+      if (!user) return
+      const extras: Record<string, SelectableUserTeam> = {}
+      for (const side of [m.home, m.away]) {
+        const ownerUid = side.userTeamOwnerUid
+        const teamId = side.userTeamId
+        if (!ownerUid || !teamId) continue
+        const key = squadKey(ownerUid, teamId)
+        if (myTeams.some((t) => t.ownerUid === ownerUid && t.id === teamId)) continue
+        const teamSnap = await getDoc(doc(getDb(), 'users', ownerUid, 'teams', teamId))
+        if (!teamSnap.exists()) continue
+        const data = teamSnap.data() as TeamDoc
+        extras[key] = {
+          id: teamSnap.id,
+          ...data,
+          ownerUid,
+          isCoOwned:
+            ownerUid !== user.uid && (data.ownerIds ?? []).includes(user.uid),
+        }
+      }
+      if (Object.keys(extras).length > 0) {
+        setExtraTeams((prev) => ({ ...prev, ...extras }))
+      }
     })()
-  }, [id, isEdit, myTeams])
+  }, [id, isEdit, myTeams, user])
 
   useEffect(() => {
     if (!pickerSide) return
@@ -245,10 +314,7 @@ export function MatchFormPage() {
   }, [pickerSide])
 
   function openPicker(side: 'A' | 'B') {
-    if (isEdit) {
-      nav('/app/teams')
-      return
-    }
+    if (isEdit) return
     setPickerSearch('')
     setPickerSide(side)
     pickerDialogRef.current?.showModal()
@@ -265,24 +331,100 @@ export function MatchFormPage() {
     setPickerSearch('')
   }
 
-  function selectTeam(teamId: string) {
-    if (pickerSide === 'A') setPickA(teamId)
-    if (pickerSide === 'B') setPickB(teamId)
+  function registerExtraTeam(team: SelectableUserTeam) {
+    const key = squadKey(team.ownerUid, team.id)
+    setExtraTeams((prev) => ({ ...prev, [key]: team }))
+  }
+
+  function resolveTeam(key: string): SelectableUserTeam | undefined {
+    if (!key) return undefined
+    const parsed = parseSquadKey(key)
+    if (!parsed) return undefined
+    const mine = myTeams.find((t) => t.ownerUid === parsed.ownerUid && t.id === parsed.teamId)
+    if (mine) return mine
+    return extraTeams[key]
+  }
+
+  function selectTeam(key: string) {
+    if (pickerSide === 'A') setPickA(key)
+    if (pickerSide === 'B') setPickB(key)
     closePicker()
   }
 
-  const previewA = pickA ? myTeams.find((t) => t.id === pickA) : undefined
-  const previewB = pickB ? myTeams.find((t) => t.id === pickB) : undefined
+  const previewA = pickA
+    ? (resolveTeam(pickA) ??
+      (editHomeSnapshot && pickMatchesStoredSide(pickA, editHomeSnapshot)
+        ? previewFromMatchSide(editHomeSnapshot)
+        : undefined))
+    : undefined
+  const previewB = pickB
+    ? (resolveTeam(pickB) ??
+      (editAwaySnapshot && pickMatchesStoredSide(pickB, editAwaySnapshot)
+        ? previewFromMatchSide(editAwaySnapshot)
+        : undefined))
+    : undefined
 
-  const excludeId = pickerSide === 'A' ? pickB : pickA
+  const needsApproval = useMemo(() => {
+    if (!user || tournamentId) return false
+    if (isEdit ? editIsInternal : isInternalChoice) return false
+
+    if (
+      isEdit &&
+      editParticipantApprovalStatus != null &&
+      editParticipantApprovalStatus !== 'accepted'
+    ) {
+      return true
+    }
+
+    const ta = pickA ? resolveTeam(pickA) : undefined
+    const tb = pickB ? resolveTeam(pickB) : undefined
+
+    if (isEdit) {
+      const homeNeeds =
+        editHomeSnapshot != null && externalSideNeedsApproval(user.uid, editHomeSnapshot, ta)
+      const awayNeeds =
+        editAwaySnapshot != null && externalSideNeedsApproval(user.uid, editAwaySnapshot, tb)
+      return homeNeeds || awayNeeds
+    }
+
+    const sides = [ta, tb].filter(Boolean) as SelectableUserTeam[]
+    return sides.some((t) => !isAccessibleSquad(user.uid, t.ownerUid, t))
+  }, [
+    user,
+    isEdit,
+    isInternalChoice,
+    editIsInternal,
+    tournamentId,
+    pickA,
+    pickB,
+    myTeams,
+    extraTeams,
+    editHomeSnapshot,
+    editAwaySnapshot,
+    editParticipantApprovalStatus,
+  ])
+
+  useEffect(() => {
+    if (needsApproval && scheduleMode === 'now') {
+      setScheduleMode('later')
+    }
+  }, [needsApproval, scheduleMode])
+
+  const excludeKey = pickerSide === 'A' ? pickB : pickA
   const pickerOptions = useMemo(() => {
-    let list = myTeams.filter((t) => t.id !== excludeId)
+    let list = myTeams.filter((t) => squadKey(t.ownerUid, t.id) !== excludeKey)
     if (tournamentId && linkedForTournament.length > 0) {
-      const allow = new Set(linkedForTournament.map((l) => l.userTeamId))
-      list = list.filter((t) => allow.has(t.id))
+      list = list.filter((t) =>
+        linkedForTournament.some(
+          (l) =>
+            l.userTeamId === t.id &&
+            (l.userTeamOwnerUid == null || l.userTeamOwnerUid === t.ownerUid) &&
+            (l.linkApprovalStatus == null || l.linkApprovalStatus === 'accepted'),
+        ),
+      )
     }
     return list
-  }, [myTeams, excludeId, tournamentId, linkedForTournament])
+  }, [myTeams, excludeKey, tournamentId, linkedForTournament])
 
   const filteredPickerOptions = useMemo(() => {
     const q = pickerSearch.trim().toLowerCase()
@@ -428,8 +570,8 @@ export function MatchFormPage() {
       let ta: SelectableUserTeam | undefined
       let tb: SelectableUserTeam | undefined
       if (!creatingInternal && !editIsInternal) {
-        ta = myTeams.find((t) => t.id === pickA)
-        tb = myTeams.find((t) => t.id === pickB)
+        ta = resolveTeam(pickA)
+        tb = resolveTeam(pickB)
         if (!ta || !tb) {
           setError('Selected teams are no longer available. Refresh and pick again.')
           return
@@ -447,10 +589,16 @@ export function MatchFormPage() {
         }
       }
 
-      const linkIdA =
-        tournamentId && ta ? linkedForTournament.find((l) => l.userTeamId === pickA)?.id : undefined
-      const linkIdB =
-        tournamentId && tb ? linkedForTournament.find((l) => l.userTeamId === pickB)?.id : undefined
+      const findLink = (t: SelectableUserTeam) =>
+        linkedForTournament.find(
+          (l) =>
+            l.userTeamId === t.id &&
+            (l.userTeamOwnerUid == null
+              ? t.ownerUid === user.uid
+              : l.userTeamOwnerUid === t.ownerUid),
+        )
+      const linkIdA = tournamentId && ta ? findLink(ta)?.id : undefined
+      const linkIdB = tournamentId && tb ? findLink(tb)?.id : undefined
       if (tournamentId && (!linkIdA || !linkIdB)) {
         setError('Both squads must be linked to this tournament (Tournament → Teams).')
         return
@@ -479,6 +627,15 @@ export function MatchFormPage() {
         home = buildTemporarySideSnapshot(sideAName, [])
         away = buildTemporarySideSnapshot(sideBName, [])
         internalExtras = buildInternalMatchFields(parentOwnerUid, parentTeam, home, away)
+      } else if (isEdit && id) {
+        const cur = await getDoc(doc(getDb(), 'matches', id))
+        if (!cur.exists()) {
+          setError('Match not found.')
+          return
+        }
+        const m = cur.data() as MatchDoc
+        home = m.home
+        away = m.away
       } else if (tournamentId && linkIdA && linkIdB && ta && tb) {
         home = buildTournamentEntrySnapshot(ta, linkIdA)
         away = buildTournamentEntrySnapshot(tb, linkIdB)
@@ -491,11 +648,6 @@ export function MatchFormPage() {
           ownerUid: tb.ownerUid,
           currentUserUid: user?.uid,
         })
-      } else if (isEdit && id) {
-        const cur = await getDoc(doc(getDb(), 'matches', id))
-        const m = cur.data() as MatchDoc
-        home = m.home
-        away = m.away
       } else {
         setError('Could not build team line-ups.')
         return
@@ -536,6 +688,39 @@ export function MatchFormPage() {
 
       const saveIsPublic = internalExtras ? false : isPublic
 
+      const pendingSides: Array<{
+        side: 'home' | 'away'
+        ownerUid: string
+        teamId: string
+        teamNumber: number
+        teamName: string
+      }> = []
+      if (!creatingInternal && !editIsInternal && !tournamentId && user && ta && tb) {
+        if (!isAccessibleSquad(user.uid, ta.ownerUid, ta) && ta.teamNumber != null) {
+          pendingSides.push({
+            side: 'home',
+            ownerUid: ta.ownerUid,
+            teamId: ta.id,
+            teamNumber: ta.teamNumber,
+            teamName: ta.name,
+          })
+        }
+        if (!isAccessibleSquad(user.uid, tb.ownerUid, tb) && tb.teamNumber != null) {
+          pendingSides.push({
+            side: 'away',
+            ownerUid: tb.ownerUid,
+            teamId: tb.id,
+            teamNumber: tb.teamNumber,
+            teamName: tb.name,
+          })
+        }
+      }
+      const requiresApproval = pendingSides.length > 0
+      if ((requiresApproval || needsApproval) && scheduleMode === 'now') {
+        setError('Schedule the match — the other team must accept before you can start scoring.')
+        return
+      }
+
       if (isEdit && id) {
         const ref = doc(getDb(), 'matches', id)
         const patch: Record<string, unknown> = {
@@ -552,12 +737,27 @@ export function MatchFormPage() {
         }
         if (!editIsInternal) {
           patch.tournamentId = tournamentId
-          patch.home = home
-          patch.away = away
         }
         await run(() => updateDoc(ref, patch))
       } else {
         const publicId = crypto.randomUUID()
+        const participantInviteeUids = requiresApproval
+          ? [
+              ...new Set(
+                pendingSides.flatMap((p) => {
+                  const team =
+                    ta && ta.ownerUid === p.ownerUid && ta.id === p.teamId
+                      ? ta
+                      : tb && tb.ownerUid === p.ownerUid && tb.id === p.teamId
+                        ? tb
+                        : null
+                  return team
+                    ? teamParticipantRecipientUids(p.ownerUid, team)
+                    : [p.ownerUid]
+                }),
+              ),
+            ]
+          : undefined
         const docRef = await run(() =>
           addDoc(collection(getDb(), 'matches'), {
             tournamentId,
@@ -579,8 +779,39 @@ export function MatchFormPage() {
             rosterPlayerIds,
             ...(tournamentMeta ?? {}),
             ...(internalExtras ?? {}),
+            ...(requiresApproval
+              ? {
+                  participantApprovalStatus: 'pending' as const,
+                  pendingParticipantTeams: pendingSides.map((p) => ({
+                    side: p.side,
+                    ownerUid: p.ownerUid,
+                    teamId: p.teamId,
+                    teamNumber: p.teamNumber,
+                  })),
+                  participantInviteeUids,
+                }
+              : {}),
           }),
         )
+        if (requiresApproval) {
+          const teamDocs = new Map<string, TeamDoc & { id: string }>()
+          if (ta) teamDocs.set(`${ta.ownerUid}:${ta.id}`, ta)
+          if (tb) teamDocs.set(`${tb.ownerUid}:${tb.id}`, tb)
+          const creatorName =
+            user.displayName?.trim() || user.email?.split('@')[0] || 'Match organiser'
+          await createMatchParticipationInvites(
+            getDb(),
+            docRef.id,
+            user.uid,
+            creatorName,
+            scheduled,
+            pendingSides,
+            teamDocs,
+          )
+          toast.success('Invitation sent — the match starts after the team accepts.')
+          nav('/app/matches')
+          return
+        }
         if (scheduleMode === 'now') {
           nav(`/app/matches/${docRef.id}/score`)
         } else {
@@ -609,7 +840,7 @@ export function MatchFormPage() {
         ? tournamentId
           ? linkedSquadsOk && tournamentMetaOk
           : isEdit
-            ? editIsInternal || myTeams.length >= 2
+            ? editIsInternal || Boolean(previewA && previewB)
             : friendlyCreateReady
         : true
 
@@ -706,6 +937,9 @@ export function MatchFormPage() {
             showFriendlyVenue={!tournamentId}
             showTeamSelection={isInternalChoice !== true}
             showPublicToggle={isInternalChoice !== true}
+            showGlobalTeamSearchHint={isInternalChoice !== true}
+            disableStartNow={needsApproval}
+            startNowDisabledHint="An opponent squad must accept your invitation before you can start scoring."
           />
         </form>
 
@@ -723,8 +957,10 @@ export function MatchFormPage() {
             searchInputRef={pickerSearchInputRef}
             pickerOptions={pickerOptions}
             filteredPickerOptions={filteredPickerOptions}
-            excludeId={excludeId}
+            excludeKey={excludeKey}
             tournamentId={tournamentId}
+            allowGlobalSearch={isInternalChoice !== true}
+            onRegisterGlobalTeam={registerExtraTeam}
             onSelectTeam={selectTeam}
             onClose={() => closePicker()}
           />
@@ -868,6 +1104,7 @@ export function MatchFormPage() {
           error={error}
           submitIdleLabel="Save changes"
           teamSelectionDisabled={isEdit}
+          showGlobalTeamSearchHint={false}
           matchStartFieldsLocked={
             isEdit &&
             (fixtureMode === 'live' || fixtureMode === 'completed' || fixtureMode === 'abandoned')
@@ -877,6 +1114,8 @@ export function MatchFormPage() {
           showFriendlyVenue={!tournamentId}
           showTeamSelection={!editIsInternal}
           showPublicToggle={!editIsInternal}
+          disableStartNow={needsApproval}
+          startNowDisabledHint="An opponent squad must accept your invitation before you can start scoring."
         />
       </form>
 
@@ -919,8 +1158,10 @@ export function MatchFormPage() {
           searchInputRef={pickerSearchInputRef}
           pickerOptions={pickerOptions}
           filteredPickerOptions={filteredPickerOptions}
-          excludeId={excludeId}
+          excludeKey={excludeKey}
           tournamentId={tournamentId}
+          allowGlobalSearch={!editIsInternal}
+          onRegisterGlobalTeam={registerExtraTeam}
           onSelectTeam={selectTeam}
           onClose={() => closePicker()}
         />
