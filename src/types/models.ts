@@ -16,6 +16,8 @@ export interface MatchTeamSnapshot {
   tournamentTeamId?: string
   /** Source doc id under users/{uid}/teams/{userTeamId} */
   userTeamId?: string
+  /** When squad lives under another user's teams path (co-owned squad). */
+  userTeamOwnerUid?: string
   /** Internal friendly: temp side names without a linked My teams doc. */
   isTemporarySide?: boolean
 }
@@ -345,6 +347,10 @@ export interface TeamDoc {
   joinInviteToken?: string | null
   /** Mirror of players[].playerId for rules and membership queries. */
   memberIds?: string[]
+  /** Additional roster player uids with co-owner privileges (primary owner is the doc path uid). */
+  ownerIds?: string[]
+  /** Active ownership transfer (`teamOwnershipTransfers/{id}`) while pending. */
+  pendingOwnershipTransferId?: string | null
 }
 
 /** `users/{uid}/accessibleSquads/{ownerUid}_{teamId}` — squads the user joined as a player. */
@@ -353,8 +359,90 @@ export interface AccessibleSquadDoc {
   teamId: string
   teamName: string
   teamShortName?: string
-  role: 'member'
+  role: 'member' | 'co-owner'
 }
+
+export type TeamOwnershipTransferStatus =
+  | 'pending'
+  | 'accepted'
+  | 'rejected'
+  | 'expired'
+  | 'cancelled'
+
+/** `teamOwnershipTransfers/{transferId}` */
+export interface TeamOwnershipTransferDoc {
+  fromUid: string
+  toUid: string
+  teamId: string
+  teamName: string
+  teamShortName?: string
+  status: TeamOwnershipTransferStatus
+  createdAt: Timestamp
+  expiresAt: Timestamp
+  resolvedAt?: Timestamp
+  teamSnapshot: TeamDoc
+  fromDisplayName?: string
+  toDisplayName?: string
+}
+
+export type OwnershipTransferNotificationKind =
+  | 'transfer_sent'
+  | 'transfer_received'
+  | 'transfer_accepted'
+  | 'transfer_rejected'
+  | 'transfer_expired'
+  | 'transfer_cancelled'
+
+export type TeamCoOwnerNotificationKind =
+  | 'co_owner_assigned'
+  | 'co_owner_left'
+  | 'co_owner_removed'
+
+export type OwnershipTransferNotification = {
+  type: 'ownership_transfer'
+  kind: OwnershipTransferNotificationKind
+  transferId: string
+  teamId: string
+  teamName: string
+  otherUid: string
+  otherDisplayName?: string
+  /** Who cancelled the transfer (`transfer_cancelled` only). */
+  actorUid?: string
+  createdAt: Timestamp
+  readAt?: Timestamp
+}
+
+export type TeamCoOwnerNotification = {
+  type: 'team_co_owner'
+  kind: TeamCoOwnerNotificationKind
+  teamId: string
+  teamName: string
+  primaryOwnerUid: string
+  otherUid: string
+  otherDisplayName?: string
+  createdAt: Timestamp
+  readAt?: Timestamp
+}
+
+export type TeamRosterNotificationKind = 'removed_from_team'
+
+export type TeamRosterNotification = {
+  type: 'team_roster'
+  kind: TeamRosterNotificationKind
+  teamId: string
+  teamName: string
+  primaryOwnerUid: string
+  actorUid: string
+  actorDisplayName?: string
+  createdAt: Timestamp
+  readAt?: Timestamp
+}
+
+/** `users/{uid}/notifications/{notificationId}` */
+export type UserNotificationDoc =
+  | OwnershipTransferNotification
+  | TeamCoOwnerNotification
+  | TeamRosterNotification
 
 /** `userTeamJoinInvites/{token}` — shareable join link metadata (token equals `TeamDoc.joinInviteToken`). */
 export interface UserTeamJoinInviteDoc {

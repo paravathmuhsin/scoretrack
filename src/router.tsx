@@ -39,6 +39,7 @@ const UserTeamCreatePage = lazyPage(
   'UserTeamCreatePage',
 )
 const UserTeamEditPage = lazyPage(() => import('./pages/UserTeamEditPage'), 'UserTeamEditPage')
+const NotificationsPage = lazyPage(() => import('./pages/NotificationsPage'), 'NotificationsPage')
 const TournamentsPage = lazyPage(() => import('./pages/TournamentsPage'), 'TournamentsPage')
 const TournamentNewPage = lazyPage(() => import('./pages/TournamentNewPage'), 'TournamentNewPage')
 const TournamentDetailPage = lazyPage(
@@ -100,6 +101,7 @@ export const router = createBrowserRouter([
             children: [
               { index: true, element: <Navigate to="/" replace /> },
               { path: 'profile', element: page(<ProfilePage />) },
+              { path: 'notifications', element: page(<NotificationsPage />) },
               { path: 'my-stats', element: page(<MyStatsPage />) },
               { path: 'teams', element: page(<TeamsPage />) },
               { path: 'teams/new', element: page(<UserTeamCreatePage />) },

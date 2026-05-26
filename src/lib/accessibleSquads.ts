@@ -17,11 +17,12 @@ export async function syncAccessibleSquadsForTeam(
   db: Firestore,
   ownerUid: string,
   teamId: string,
-  team: Pick<TeamDoc, 'name' | 'shortName' | 'players'>,
+  team: Pick<TeamDoc, 'name' | 'shortName' | 'players' | 'ownerIds'>,
 ): Promise<void> {
   const batch = writeBatch(db)
   const sn = team.shortName?.trim()
   const memberIds = buildMemberIdsFromPlayers(team.players)
+  const coOwnerSet = new Set(team.ownerIds ?? [])
 
   for (const pid of memberIds) {
     if (pid === ownerUid) continue
@@ -31,7 +32,7 @@ export async function syncAccessibleSquadsForTeam(
       teamId,
       teamName: team.name,
       ...(sn ? { teamShortName: sn } : {}),
-      role: 'member',
+      role: coOwnerSet.has(pid) ? 'co-owner' : 'member',
     }
     batch.set(ref, row)
   }
@@ -44,12 +45,13 @@ export async function syncAccessibleSquadsAfterRosterChange(
   db: Firestore,
   ownerUid: string,
   teamId: string,
-  team: Pick<TeamDoc, 'name' | 'shortName' | 'players'>,
+  team: Pick<TeamDoc, 'name' | 'shortName' | 'players' | 'ownerIds'>,
   previousMemberIds: string[],
 ): Promise<void> {
   const nextIds = new Set(buildMemberIdsFromPlayers(team.players))
+  const coOwners = new Set(team.ownerIds ?? [])
   const prevSet = new Set(previousMemberIds)
-  const removed = [...prevSet].filter((id) => id !== ownerUid && !nextIds.has(id))
+  const removed = [...prevSet].filter((id) => id !== ownerUid && !nextIds.has(id) && !coOwners.has(id))
   await Promise.all(removed.map((pid) => deleteAccessibleSquadForMember(db, pid, ownerUid, teamId)))
   await syncAccessibleSquadsForTeam(db, ownerUid, teamId, team)
 }

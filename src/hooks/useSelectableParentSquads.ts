@@ -77,7 +77,7 @@ export function useSelectableParentSquads(): {
         teamId: a.teamId,
         teamName: a.teamName,
         ...(sn ? { teamShortName: sn } : {}),
-        isOwner: false,
+        isOwner: a.role === 'co-owner',
       })
     }
     return [...map.values()]

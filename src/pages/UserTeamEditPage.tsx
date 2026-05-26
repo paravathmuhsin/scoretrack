@@ -3,9 +3,19 @@ import { ArrowLeft, Copy, ExternalLink, Share2, Trash2, Users, X } from 'lucide-
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { v4 as uuidv4 } from 'uuid'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
+import { TransferOwnershipDialogContent } from '../components/TransferOwnershipDialogContent'
 import { UserTeamForm } from '../components/UserTeamForm'
+import type { DirectoryHit } from '../lib/directorySearch'
+import {
+  cancelOwnershipTransfer,
+  createOwnershipTransferRequest,
+} from '../lib/teamOwnershipTransfer'
+import { notifyNewCoOwners, notifyRemovedCoOwners } from '../lib/coOwnerNotifications'
+import { removeSelfCoOwnership } from '../lib/removeCoOwnership'
+import { notifyPlayersRemovedFromTeam } from '../lib/rosterNotifications'
+import { mergeProtectedRosterForCoOwnerSave, normalizeOwnerIds } from '../lib/teamOwnerIds'
 import { Spinner } from '../components/Spinner'
 import { usePendingWrites } from '../hooks/usePendingWrites'
 import { getDb } from '../firebase/config'
@@ -23,19 +33,32 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import type { TeamDoc } from '../types/models'
+import type { TeamDoc, UserProfileDoc } from '../types/models'
 import type { UserTeamFormPayload } from '../components/UserTeamForm'
 
 export function UserTeamEditPage() {
   const { teamId } = useParams()
+  const [searchParams] = useSearchParams()
   const { user } = useAuth()
   const nav = useNavigate()
   const { writePending, run } = usePendingWrites()
   const [team, setTeam] = useState<(TeamDoc & { id: string }) | null>(null)
+  const [ownerUid, setOwnerUid] = useState<string | null>(null)
+  const [authorized, setAuthorized] = useState<boolean | null>(null)
   const [loadFailed, setLoadFailed] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [shareModalOpen, setShareModalOpen] = useState(false)
+  const [transferModalOpen, setTransferModalOpen] = useState(false)
+  const [transferBusy, setTransferBusy] = useState(false)
   const [inviteBusy, setInviteBusy] = useState(false)
+  const [leaveCoOwnerOpen, setLeaveCoOwnerOpen] = useState(false)
+  const [leaveCoOwnerBusy, setLeaveCoOwnerBusy] = useState(false)
+
+  const pathOwnerUid = searchParams.get('owner')?.trim() || user?.uid || ''
+  const isPrimaryOwner = Boolean(user && ownerUid && user.uid === ownerUid)
+  const isCoOwnerOnly = Boolean(
+    user && ownerUid && team && !isPrimaryOwner && (team.ownerIds ?? []).includes(user.uid),
+  )
 
   const invitationUrl = useMemo(() => {
     if (!team?.joinInviteToken) return ''
@@ -48,14 +71,15 @@ export function UserTeamEditPage() {
     setInviteBusy(true)
     try {
       const token = uuidv4()
+      const ouid = ownerUid ?? user.uid
       await setDoc(doc(getDb(), 'userTeamJoinInvites', token), {
-        ownerUid: user.uid,
+        ownerUid: ouid,
         teamId,
         teamName: team.name,
         memberIds: team.players.map((p) => p.playerId),
         createdAt: Timestamp.now(),
       })
-      await updateDoc(doc(getDb(), 'users', user.uid, 'teams', teamId), {
+      await updateDoc(doc(getDb(), 'users', ouid, 'teams', teamId), {
         joinInviteToken: token,
       })
       setTeam({ ...team, joinInviteToken: token })
@@ -68,18 +92,28 @@ export function UserTeamEditPage() {
   }
 
   useEffect(() => {
-    if (!user || !teamId) return
+    if (!user || !teamId || !pathOwnerUid) return
     void (async () => {
       setLoadFailed(false)
-      const tmSnap = await getDoc(doc(getDb(), 'users', user.uid, 'teams', teamId))
+      setAuthorized(null)
+      const ouid = pathOwnerUid
+      const tmSnap = await getDoc(doc(getDb(), 'users', ouid, 'teams', teamId))
       if (!tmSnap.exists()) {
         setTeam(null)
+        setOwnerUid(null)
+        setAuthorized(false)
         setLoadFailed(true)
         return
       }
-      setTeam({ id: tmSnap.id, ...(tmSnap.data() as TeamDoc) })
+      const data = { id: tmSnap.id, ...(tmSnap.data() as TeamDoc) }
+      const can =
+        user.uid === ouid || (data.ownerIds ?? []).includes(user.uid)
+      setTeam(data)
+      setOwnerUid(ouid)
+      setAuthorized(can)
+      if (!can) setLoadFailed(true)
     })()
-  }, [user, teamId])
+  }, [user, teamId, pathOwnerUid])
 
   const backToTeams = (
     <Link
@@ -101,14 +135,16 @@ export function UserTeamEditPage() {
         <p className="text-sm text-slate-600">Missing team id</p>
       </div>
     )
-  if (loadFailed)
+  if (loadFailed || authorized === false)
     return (
       <div className="mx-auto w-full max-w-3xl pb-2">
         {backToTeams}
-        <p className="text-sm text-slate-600">Team not found.</p>
+        <p className="text-sm text-slate-600">
+          {authorized === false ? 'You do not have access to edit this team.' : 'Team not found.'}
+        </p>
       </div>
     )
-  if (!team)
+  if (!team || !ownerUid || authorized !== true)
     return (
       <div className="mx-auto w-full max-w-3xl pb-2">
         {backToTeams}
@@ -152,7 +188,10 @@ export function UserTeamEditPage() {
                     if (team.joinInviteToken) {
                       await deleteDoc(doc(getDb(), 'userTeamJoinInvites', team.joinInviteToken))
                     }
-                    await deleteDoc(doc(getDb(), 'users', user.uid, 'teams', teamId))
+                    if (team.pendingOwnershipTransferId) {
+                      throw new Error('Cancel the pending transfer before deleting this team.')
+                    }
+                    await deleteDoc(doc(getDb(), 'users', ownerUid, 'teams', teamId))
                   })
                   setDeleteDialogOpen(false)
                   nav('/app/teams')
@@ -316,32 +355,280 @@ export function UserTeamEditPage() {
         </div>
       </div>
 
+      {transferModalOpen && isPrimaryOwner ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4"
+          role="presentation"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setTransferModalOpen(false)
+          }}
+        >
+          <div onMouseDown={(e) => e.stopPropagation()}>
+            <TransferOwnershipDialogContent
+              teamName={team.name}
+              currentUserUid={user!.uid}
+              busy={transferBusy}
+              onClose={() => setTransferModalOpen(false)}
+              onConfirm={(hit: DirectoryHit) => {
+                void (async () => {
+                  if (!user) return
+                  setTransferBusy(true)
+                  try {
+                    const fromName =
+                      user.displayName?.trim() || user.email?.split('@')[0] || 'Team owner'
+                    await createOwnershipTransferRequest(
+                      getDb(),
+                      user.uid,
+                      team,
+                      hit.uid,
+                      hit.displayName,
+                      fromName,
+                    )
+                    const refreshed = await getDoc(doc(getDb(), 'users', ownerUid, 'teams', teamId))
+                    if (refreshed.exists()) {
+                      setTeam({ id: refreshed.id, ...(refreshed.data() as TeamDoc) })
+                    }
+                    setTransferModalOpen(false)
+                    toast.success('Transfer request sent. Open Notifications to track status.')
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : 'Could not send request')
+                  } finally {
+                    setTransferBusy(false)
+                  }
+                })()
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
+
       <UserTeamForm
         key={team.id}
         initial={team}
         submitLabel="Save changes"
+        primaryUid={ownerUid ?? ''}
+        canManageOwners={isPrimaryOwner}
         onSubmit={async (p: UserTeamFormPayload) => {
-          if (!user) return
+          if (!user || !teamId) return
           const prevMemberIds = buildMemberIdsFromPlayers(team.players)
-          await updateDoc(doc(getDb(), 'users', user.uid, 'teams', teamId), {
+          const prevOwnerIds = team.ownerIds ?? []
+          const players = mergeProtectedRosterForCoOwnerSave(
+            p.players,
+            team.players,
+            ownerUid,
+            isPrimaryOwner ? [] : prevOwnerIds,
+          )
+          const nextPlayerIds = new Set(players.map((x) => x.playerId))
+          const removedFromRoster = team.players.filter((pl) => !nextPlayerIds.has(pl.playerId))
+          const patch: Record<string, unknown> = {
             name: p.name,
             shortName: p.shortName,
-            players: p.players,
+            players,
             location: p.location,
             logoUrl: deleteField(),
-            memberIds: buildMemberIdsFromPlayers(p.players),
-          })
-          await syncAccessibleSquadsAfterRosterChange(getDb(), user.uid, teamId, p, prevMemberIds)
+            memberIds: buildMemberIdsFromPlayers(players),
+          }
+          const nextOwnerIds = isPrimaryOwner
+            ? normalizeOwnerIds(p.ownerIds, players, ownerUid)
+            : team.ownerIds ?? []
+          if (isPrimaryOwner) {
+            patch.ownerIds = nextOwnerIds
+          }
+          await updateDoc(doc(getDb(), 'users', ownerUid, 'teams', teamId), patch)
+          await syncAccessibleSquadsAfterRosterChange(
+            getDb(),
+            ownerUid,
+            teamId,
+            { ...p, players, ownerIds: nextOwnerIds },
+            prevMemberIds,
+          )
           const tok = team.joinInviteToken
           if (tok) {
             await updateDoc(doc(getDb(), 'userTeamJoinInvites', tok), {
               teamName: p.name,
-              memberIds: p.players.map((x) => x.playerId),
+              memberIds: players.map((x) => x.playerId),
             })
           }
+          if (isPrimaryOwner) {
+            const primaryDisplayName =
+              user.displayName?.trim() || user.email?.split('@')[0] || 'Team owner'
+            const coOwnerNames: Record<string, string> = {}
+            for (const id of new Set([...prevOwnerIds, ...nextOwnerIds])) {
+              const pl = players.find((x) => x.playerId === id)
+              if (pl) coOwnerNames[id] = pl.name
+            }
+            await notifyNewCoOwners(getDb(), {
+              primaryOwnerUid: ownerUid,
+              teamId,
+              teamName: p.name,
+              primaryDisplayName,
+              previousOwnerIds: prevOwnerIds,
+              nextOwnerIds,
+              newCoOwnerNames: coOwnerNames,
+            })
+            await notifyRemovedCoOwners(getDb(), {
+              primaryOwnerUid: ownerUid,
+              teamId,
+              teamName: p.name,
+              primaryDisplayName,
+              previousOwnerIds: prevOwnerIds,
+              nextOwnerIds,
+              newCoOwnerNames: coOwnerNames,
+            })
+          }
+          if (removedFromRoster.length > 0) {
+            const actorDisplayName =
+              user.displayName?.trim() || user.email?.split('@')[0] || 'Team manager'
+            await notifyPlayersRemovedFromTeam(getDb(), {
+              primaryOwnerUid: ownerUid,
+              teamId,
+              teamName: p.name,
+              actorUid: user.uid,
+              actorDisplayName,
+              removedPlayers: removedFromRoster,
+            })
+          }
+          setTeam({ ...team, ...p, players, ownerIds: nextOwnerIds })
+          toast.success('Team saved')
         }}
       />
 
+      {isCoOwnerOnly ? (
+        <section
+          className="rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.04)] sm:p-5"
+          aria-labelledby="co-owner-self-heading"
+        >
+          <h2 id="co-owner-self-heading" className="text-base font-bold text-slate-900">
+            Co-ownership
+          </h2>
+          <p className="mt-2 text-sm leading-relaxed text-slate-600">
+            You can edit this squad and use it in matches. Removing co-ownership keeps you on the roster as a
+            player only, if you are still listed in the squad.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-4 h-10 w-full border-destructive/55 text-destructive hover:bg-destructive/5"
+            disabled={writePending || leaveCoOwnerBusy}
+            onClick={() => setLeaveCoOwnerOpen(true)}
+          >
+            Remove co-ownership
+          </Button>
+          <AlertDialog open={leaveCoOwnerOpen} onOpenChange={setLeaveCoOwnerOpen}>
+            <AlertDialogContent size="sm" className="max-w-[min(100vw-2rem,22rem)] sm:max-w-md">
+              <AlertDialogHeader>
+                <AlertDialogTitle>Remove co-ownership?</AlertDialogTitle>
+                <AlertDialogDescription className="text-sm text-slate-600">
+                  You will lose the ability to edit <span className="font-semibold">{team.name}</span> and
+                  manage invites. You can stay on the squad as a player if you remain on the roster.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter className="grid grid-cols-2 gap-3">
+                <AlertDialogCancel disabled={leaveCoOwnerBusy}>Cancel</AlertDialogCancel>
+                <Button
+                  type="button"
+                  variant="default"
+                  disabled={leaveCoOwnerBusy}
+                  onClick={() => {
+                    void (async () => {
+                      if (!user || !ownerUid || !teamId) return
+                      setLeaveCoOwnerBusy(true)
+                      try {
+                        const coName =
+                          user.displayName?.trim() || user.email?.split('@')[0] || 'A player'
+                        const ownerSnap = await getDoc(doc(getDb(), 'users', ownerUid))
+                        const ownerProf = ownerSnap.exists()
+                          ? (ownerSnap.data() as UserProfileDoc).displayName
+                          : ''
+                        const primaryDisplayName = ownerProf?.trim() || 'Team owner'
+                        await removeSelfCoOwnership(
+                          getDb(),
+                          ownerUid,
+                          teamId,
+                          user.uid,
+                          coName,
+                          primaryDisplayName,
+                        )
+                        setLeaveCoOwnerOpen(false)
+                        toast.success('Co-ownership removed')
+                        nav('/app/teams')
+                      } catch (e) {
+                        toast.error(e instanceof Error ? e.message : 'Could not remove co-ownership')
+                      } finally {
+                        setLeaveCoOwnerBusy(false)
+                      }
+                    })()
+                  }}
+                >
+                  {leaveCoOwnerBusy ? 'Removing…' : 'Remove'}
+                </Button>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </section>
+      ) : null}
+
+      {isPrimaryOwner ? (
+        <section
+          className="rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.04)] sm:p-5"
+          aria-labelledby="transfer-ownership-heading"
+        >
+          <h2 id="transfer-ownership-heading" className="text-base font-bold text-slate-900">
+            Transfer ownership
+          </h2>
+          <p className="mt-2 text-sm leading-relaxed text-slate-600">
+            Send ownership to another registered player. They must accept the request for complete transfer.
+            Track status there after you send a request.
+          </p>
+          {team.pendingOwnershipTransferId ? (
+            <div className="mt-4 space-y-3">
+              <p className="text-sm font-medium text-amber-800">A transfer request is pending.</p>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 w-full"
+                disabled={writePending || transferBusy}
+                onClick={() => {
+                  void (async () => {
+                    if (!team.pendingOwnershipTransferId) return
+                    setTransferBusy(true)
+                    try {
+                      await cancelOwnershipTransfer(
+                        getDb(),
+                        team.pendingOwnershipTransferId,
+                        ownerUid,
+                      )
+                      const refreshed = await getDoc(doc(getDb(), 'users', ownerUid, 'teams', teamId))
+                      if (refreshed.exists()) {
+                        setTeam({ id: refreshed.id, ...(refreshed.data() as TeamDoc) })
+                      }
+                      toast.success('Transfer request cancelled')
+                    } catch (e) {
+                      toast.error(e instanceof Error ? e.message : 'Could not cancel')
+                    } finally {
+                      setTransferBusy(false)
+                    }
+                  })()
+                }}
+              >
+                Cancel request
+              </Button>
+            </div>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-4 h-10 w-full"
+              disabled={writePending}
+              onClick={() => setTransferModalOpen(true)}
+            >
+              Transfer ownership
+            </Button>
+          )}
+        </section>
+      ) : null}
+
+      {isPrimaryOwner ? (
       <section
         className="rounded-2xl border border-rose-200/80 bg-rose-50/60 p-4 shadow-[0_2px_12px_rgba(15,23,42,0.04)] sm:p-5"
         aria-labelledby="delete-team-heading"
@@ -364,6 +651,7 @@ export function UserTeamEditPage() {
           Delete team
         </Button>
       </section>
+      ) : null}
     </div>
   )
 }

@@ -110,7 +110,7 @@ export function LoginPage() {
                   autoComplete="email"
                   disabled={authBusy}
                   placeholder="Email or Phone Number"
-                  className="h-auto border-0 bg-transparent px-0 py-0 text-[1.02rem] font-medium text-slate-900 shadow-none ring-0 placeholder:font-normal placeholder:text-[#8b909a] focus-visible:border-0 focus-visible:ring-0"
+                  className="h-auto border-0 bg-transparent px-0 py-0 text-[1.02rem] font-medium text-slate-900 shadow-none ring-0 placeholder:font-normal placeholder:text-placeholder-foreground focus-visible:border-0 focus-visible:ring-0"
                 />
               </div>
             </div>
@@ -130,7 +130,7 @@ export function LoginPage() {
                   autoComplete="current-password"
                   disabled={authBusy}
                   placeholder="Password"
-                  className="h-auto border-0 bg-transparent px-0 py-0 text-[1.02rem] font-medium text-slate-900 shadow-none ring-0 placeholder:font-normal placeholder:text-[#8b909a] focus-visible:border-0 focus-visible:ring-0"
+                  className="h-auto border-0 bg-transparent px-0 py-0 text-[1.02rem] font-medium text-slate-900 shadow-none ring-0 placeholder:font-normal placeholder:text-placeholder-foreground focus-visible:border-0 focus-visible:ring-0"
                 />
                 <Button
                   type="button"

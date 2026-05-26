@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  Bell,
   CalendarDays,
   LogOut,
   Menu,
@@ -7,6 +8,7 @@ import {
   User,
   Users,
 } from "lucide-react";
+import { useUnreadNotificationsCount } from "../hooks/useUnreadNotificationsCount";
 import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
@@ -42,6 +44,7 @@ function MobileAccountDrawer({
 }) {
   const { user, logout } = useAuth();
   const { pathname } = useLocation();
+  const unreadCount = useUnreadNotificationsCount();
 
   if (!user) return null;
 
@@ -143,6 +146,25 @@ function MobileAccountDrawer({
               <BarChart3 className="size-5 shrink-0 text-primary" strokeWidth={2.2} aria-hidden />
               My stats
             </Link>
+            <Link
+              to="/app/notifications"
+              className={cn(
+                navBase,
+                pathname.startsWith("/app/notifications") ? navActive : navIdle,
+              )}
+              aria-current={pathname.startsWith("/app/notifications") ? "page" : undefined}
+              onClick={close}
+            >
+              <Bell className="size-5 shrink-0 text-primary" strokeWidth={2.2} aria-hidden />
+              <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                Notifications
+                {unreadCount > 0 ? (
+                  <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                ) : null}
+              </span>
+            </Link>
           </nav>
 
           <Separator className="bg-slate-200" />
@@ -221,9 +243,19 @@ function MobileBottomTabs({ items }: { items: NavItem[] }) {
   );
 }
 
+function MenuUnreadBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span className="pointer-events-none absolute -top-0.5 -right-0.5 flex min-w-[18px] items-center justify-center rounded-full bg-primary px-1 py-0.5 text-[10px] font-bold leading-none text-primary-foreground">
+      {count > 9 ? "9+" : count}
+    </span>
+  );
+}
+
 export function MobileHeader() {
   const { user } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  const unreadCount = useUnreadNotificationsCount();
 
   return (
     <header className="sticky top-0 z-30 w-full bg-transparent">
@@ -254,13 +286,18 @@ export function MobileHeader() {
           <>
             <button
               type="button"
-              aria-label="Open menu"
+              aria-label={
+                unreadCount > 0
+                  ? `Open menu, ${unreadCount} unread notifications`
+                  : "Open menu"
+              }
               aria-expanded={menuOpen}
               aria-controls={menuOpen ? "account-menu-sheet" : undefined}
               onClick={() => setMenuOpen(true)}
-              className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-slate-900 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+              className="relative inline-flex h-11 w-11 items-center justify-center rounded-xl text-slate-900 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
             >
               <Menu size={36} strokeWidth={2.4} />
+              <MenuUnreadBadge count={unreadCount} />
             </button>
             <MobileAccountDrawer open={menuOpen} onOpenChange={setMenuOpen} />
           </>

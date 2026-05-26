@@ -34,6 +34,7 @@ export function MainNav() {
           <NavLink to="/app/teams">My teams</NavLink>
           <NavLink to="/app/matches">My matches</NavLink>
           <NavLink to="/app/my-stats">My stats</NavLink>
+          <NavLink to="/app/notifications">Notifications</NavLink>
         </>
       )}
     </nav>

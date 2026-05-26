@@ -156,7 +156,7 @@ export function TournamentAddSquadDialogContent({
                 value={search}
                 onChange={(e) => onSearchChange(e.target.value)}
                 aria-label="Search squads"
-                className="h-9 flex-1 border-0 bg-transparent px-0 py-0 text-slate-900 shadow-none placeholder:text-slate-500 focus-visible:ring-0 md:text-sm"
+                className="h-9 flex-1 border-0 bg-transparent px-0 py-0 text-slate-900 shadow-none placeholder:text-placeholder-foreground focus-visible:ring-0 md:text-sm"
               />
               {search ? (
                 <button

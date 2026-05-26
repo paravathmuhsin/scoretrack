@@ -744,15 +744,25 @@ export function ScoreMatchPage() {
       await run(async () => {
         const updates: Partial<Pick<MatchDoc, 'home' | 'away'>> = {}
         if (hid) {
-          const snap = await getDoc(doc(getDb(), 'users', user.uid, 'teams', hid))
+          const ownerUid = match.home.userTeamOwnerUid ?? user.uid
+          const snap = await getDoc(doc(getDb(), 'users', ownerUid, 'teams', hid))
           if (snap.exists()) {
-            updates.home = buildSnapshotFromUserTeam({ id: snap.id, ...(snap.data() as TeamDoc) })
+            const t = { id: snap.id, ...(snap.data() as TeamDoc) }
+            updates.home = buildSnapshotFromUserTeam(t, {
+              ownerUid,
+              currentUserUid: user.uid,
+            })
           }
         }
         if (aid) {
-          const snap = await getDoc(doc(getDb(), 'users', user.uid, 'teams', aid))
+          const ownerUid = match.away.userTeamOwnerUid ?? user.uid
+          const snap = await getDoc(doc(getDb(), 'users', ownerUid, 'teams', aid))
           if (snap.exists()) {
-            updates.away = buildSnapshotFromUserTeam({ id: snap.id, ...(snap.data() as TeamDoc) })
+            const t = { id: snap.id, ...(snap.data() as TeamDoc) }
+            updates.away = buildSnapshotFromUserTeam(t, {
+              ownerUid,
+              currentUserUid: user.uid,
+            })
           }
         }
         if (Object.keys(updates).length === 0) {
@@ -1826,12 +1836,26 @@ export function ScoreMatchPage() {
               <div className="mb-2 space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
                 {match.home.userTeamId && (
-                  <Link className={MY_TEAMS_TOOLBAR_EDIT_LINK_CLASS} to={`/app/teams/${match.home.userTeamId}`}>
+                  <Link
+                    className={MY_TEAMS_TOOLBAR_EDIT_LINK_CLASS}
+                    to={`/app/teams/${match.home.userTeamId}${
+                      match.home.userTeamOwnerUid && match.home.userTeamOwnerUid !== user?.uid
+                        ? `?owner=${encodeURIComponent(match.home.userTeamOwnerUid)}`
+                        : ''
+                    }`}
+                  >
                     Edit {match.home.name}
                   </Link>
                 )}
                 {match.away.userTeamId && (
-                  <Link className={MY_TEAMS_TOOLBAR_EDIT_LINK_CLASS} to={`/app/teams/${match.away.userTeamId}`}>
+                  <Link
+                    className={MY_TEAMS_TOOLBAR_EDIT_LINK_CLASS}
+                    to={`/app/teams/${match.away.userTeamId}${
+                      match.away.userTeamOwnerUid && match.away.userTeamOwnerUid !== user?.uid
+                        ? `?owner=${encodeURIComponent(match.away.userTeamOwnerUid)}`
+                        : ''
+                    }`}
+                  >
                     Edit {match.away.name}
                   </Link>
                 )}
@@ -2558,7 +2582,7 @@ export function ScoreMatchPage() {
                   disabled={writePending}
                   required
                   aria-required="true"
-                  className="mt-1.5 block w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:opacity-60"
+                  className="mt-1.5 block w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-placeholder-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:opacity-60"
                 />
               </label>
 
@@ -3282,7 +3306,7 @@ export function ScoreMatchPage() {
                   }}
                   aria-invalid={Boolean(overthrowFieldError)}
                   aria-describedby={overthrowFieldError ? 'overthrow-runs-error' : undefined}
-                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-none outline-none transition-[box-shadow,border-color] placeholder:text-slate-400 focus:border-primary/35 focus:shadow-[0_0_0_3px_rgba(229,9,20,0.12)]"
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-none outline-none transition-[box-shadow,border-color] placeholder:text-placeholder-foreground focus:border-primary/35 focus:shadow-[0_0_0_3px_rgba(229,9,20,0.12)]"
                   autoFocus
                 />
                 {overthrowFieldError ? (

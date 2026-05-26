@@ -153,7 +153,7 @@ export function ProfilePage() {
   const fieldShellError =
     'border-red-400 focus-within:border-red-500 focus-within:shadow-[0_0_0_3px_rgba(248,113,113,0.22)]'
   const innerInput =
-    'h-9 flex-1 border-0 bg-transparent px-0 py-0 text-slate-900 shadow-none placeholder:text-slate-600 focus-visible:ring-0 md:text-sm'
+    'h-9 flex-1 border-0 bg-transparent px-0 py-0 text-slate-900 shadow-none placeholder:text-placeholder-foreground focus-visible:ring-0 md:text-sm'
 
   return (
     <div className="mx-auto w-full max-w-lg pb-8">

@@ -106,14 +106,222 @@ service cloud.firestore {
         && userTeamDocExistsFor(ownerUid, teamId);
     }
 
+    function accessibleSquadRoleValid() {
+      return request.resource.data.role == 'member'
+        || request.resource.data.role == 'co-owner';
+    }
+
     function accessibleSquadOwnerWrite() {
       return request.resource.data.ownerUid is string
         && request.resource.data.teamId is string
         && request.resource.data.teamName is string
-        && request.resource.data.role == 'member'
+        && accessibleSquadRoleValid()
         && squadOwnerMaintainsMemberAccessibleSquad(
           request.resource.data.ownerUid,
           request.resource.data.teamId,
+        );
+    }
+
+    function userTeamData(uid, teamId) {
+      return get(/databases/$(database)/documents/users/$(uid)/teams/$(teamId)).data;
+    }
+
+    function isUidInTeamOwnerIds(teamPathUid, teamId, memberUid) {
+      return userTeamDocExistsFor(teamPathUid, teamId)
+        && userTeamData(teamPathUid, teamId).keys().hasAny(['ownerIds'])
+        && userTeamData(teamPathUid, teamId).ownerIds is list
+        && memberUid in userTeamData(teamPathUid, teamId).ownerIds;
+    }
+
+    function isTeamCoOwner(uid, teamId) {
+      return authed() && isUidInTeamOwnerIds(uid, teamId, request.auth.uid);
+    }
+
+    /** Primary owner on the roster cannot remove themselves via save. */
+    function primaryOwnerCannotRemoveSelfFromRoster(teamPathUid) {
+      return request.auth.uid != teamPathUid
+        || !resource.data.keys().hasAny(['memberIds'])
+        || !(request.auth.uid in resource.data.memberIds)
+        || (
+          request.resource.data.keys().hasAny(['memberIds'])
+          && request.resource.data.memberIds is list
+          && request.auth.uid in request.resource.data.memberIds
+        );
+    }
+
+    function coOwnerCannotStripOwners(teamPathUid, teamId) {
+      let prev = userTeamData(teamPathUid, teamId);
+      let ownerList = prev.keys().hasAny(['ownerIds']) && prev.ownerIds is list
+        ? prev.ownerIds
+        : [];
+      return request.resource.data.keys().hasAny(['memberIds'])
+        && request.resource.data.memberIds is list
+        && request.resource.data.memberIds.hasAll([teamPathUid])
+        && request.resource.data.memberIds.hasAll(ownerList);
+    }
+
+    function coOwnerTeamUpdateAllowed(uid, teamId) {
+      return isTeamCoOwner(uid, teamId)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['ownerIds'])
+        && coOwnerCannotStripOwners(uid, teamId);
+    }
+
+  /** Co-owner removes only themselves from ownerIds (evaluated against current team doc via get()). */
+    function coOwnerSelfRemoveOwnerIds(teamPathUid, teamId) {
+      return authed()
+        && request.auth.uid != teamPathUid
+        && isUidInTeamOwnerIds(teamPathUid, teamId, request.auth.uid)
+        && request.resource.data.keys().hasAny(['ownerIds'])
+        && request.resource.data.ownerIds is list
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ownerIds'])
+        && !(request.auth.uid in request.resource.data.ownerIds);
+    }
+
+    function coOwnerSelfDemoteAccessibleSquad(userUid) {
+      return authed()
+        && request.auth.uid == userUid
+        && resource.data.ownerUid is string
+        && resource.data.teamId is string
+        && resource.data.role == 'co-owner'
+        && request.resource.data.role == 'member'
+        && userTeamDocExistsFor(resource.data.ownerUid, resource.data.teamId);
+    }
+
+    function teamCoOwnerNotificationCreate(recipientUid) {
+      return request.resource.data.type == 'team_co_owner'
+        && request.resource.data.kind is string
+        && request.resource.data.teamId is string
+        && request.resource.data.teamName is string
+        && request.resource.data.primaryOwnerUid is string
+        && request.resource.data.otherUid is string
+        && request.resource.data.createdAt is timestamp
+        && (
+          (
+            request.resource.data.kind == 'co_owner_assigned'
+            && request.auth.uid == request.resource.data.primaryOwnerUid
+            && recipientUid != request.auth.uid
+            && userTeamDocExistsFor(request.auth.uid, request.resource.data.teamId)
+            && isUidInTeamOwnerIds(request.auth.uid, request.resource.data.teamId, recipientUid)
+          )
+          || (
+            request.resource.data.kind == 'co_owner_left'
+            && request.auth.uid == request.resource.data.otherUid
+            && userTeamDocExistsFor(request.resource.data.primaryOwnerUid, request.resource.data.teamId)
+            && (
+              recipientUid == request.resource.data.primaryOwnerUid
+              || recipientUid == request.resource.data.otherUid
+            )
+          )
+          || (
+            request.resource.data.kind == 'co_owner_removed'
+            && request.auth.uid == request.resource.data.primaryOwnerUid
+            && request.resource.data.otherUid == request.resource.data.primaryOwnerUid
+            && recipientUid != request.auth.uid
+            && recipientUid != request.resource.data.primaryOwnerUid
+            && userTeamDocExistsFor(request.auth.uid, request.resource.data.teamId)
+          )
+        );
+    }
+
+    function teamRosterNotificationCreate(recipientUid) {
+      return request.resource.data.type == 'team_roster'
+        && request.resource.data.kind == 'removed_from_team'
+        && request.resource.data.teamId is string
+        && request.resource.data.teamName is string
+        && request.resource.data.primaryOwnerUid is string
+        && request.resource.data.actorUid is string
+        && request.resource.data.createdAt is timestamp
+        && recipientUid != request.auth.uid
+        && request.auth.uid == request.resource.data.actorUid
+        && userTeamDocExistsFor(request.resource.data.primaryOwnerUid, request.resource.data.teamId)
+        && (
+          request.auth.uid == request.resource.data.primaryOwnerUid
+          || isTeamCoOwner(
+            request.resource.data.primaryOwnerUid,
+            request.resource.data.teamId,
+          )
+        );
+    }
+
+    function teamTransferData(transferId) {
+      return get(/databases/$(database)/documents/teamOwnershipTransfers/$(transferId)).data;
+    }
+
+    function isTransferParty(transferId) {
+      return authed()
+        && exists(/databases/$(database)/documents/teamOwnershipTransfers/$(transferId))
+        && (
+          teamTransferData(transferId).fromUid == request.auth.uid
+          || teamTransferData(transferId).toUid == request.auth.uid
+        );
+    }
+
+    /** Primary owner sets pending transfer id on their team. */
+    function ownerSetsPendingOwnershipTransfer(teamPathUid) {
+      return authed()
+        && request.auth.uid == teamPathUid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pendingOwnershipTransferId'])
+        && request.resource.data.keys().hasAny(['pendingOwnershipTransferId'])
+        && request.resource.data.pendingOwnershipTransferId is string;
+    }
+
+    /** Primary owner clears pending transfer on their team (cancel / after resolve). */
+    function ownerClearsPendingOwnershipTransfer(teamPathUid) {
+      return authed()
+        && request.auth.uid == teamPathUid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pendingOwnershipTransferId'])
+        && (
+          !request.resource.data.keys().hasAny(['pendingOwnershipTransferId'])
+          || request.resource.data.pendingOwnershipTransferId == null
+        );
+    }
+
+    function ownershipTransferNotificationCreate(recipientUid) {
+      return request.resource.data.type == 'ownership_transfer'
+        && request.resource.data.kind is string
+        && request.resource.data.teamId is string
+        && request.resource.data.teamName is string
+        && request.resource.data.transferId is string
+        && request.resource.data.otherUid is string
+        && request.resource.data.createdAt is timestamp
+        && (
+          isTransferParty(request.resource.data.transferId)
+          || (
+            request.resource.data.kind == 'transfer_received'
+            && request.auth.uid == request.resource.data.otherUid
+            && recipientUid != request.auth.uid
+            && userTeamDocExistsFor(request.auth.uid, request.resource.data.teamId)
+          )
+          || (
+            request.resource.data.kind == 'transfer_rejected'
+            && request.auth.uid == request.resource.data.otherUid
+            && recipientUid != request.auth.uid
+            && exists(/databases/$(database)/documents/teamOwnershipTransfers/$(request.resource.data.transferId))
+            && teamTransferData(request.resource.data.transferId).fromUid == recipientUid
+            && teamTransferData(request.resource.data.transferId).toUid == request.auth.uid
+          )
+        );
+    }
+
+    /** Recipient of a pending ownership transfer (read/update sender team to resolve it). */
+    function pendingTransferRecipientForTeam(teamPathUid, teamId) {
+      return authed()
+        && request.auth.uid != teamPathUid
+        && resource.data.keys().hasAny(['pendingOwnershipTransferId'])
+        && resource.data.pendingOwnershipTransferId is string
+        && exists(/databases/$(database)/documents/teamOwnershipTransfers/$(resource.data.pendingOwnershipTransferId))
+        && teamTransferData(resource.data.pendingOwnershipTransferId).fromUid == teamPathUid
+        && teamTransferData(resource.data.pendingOwnershipTransferId).teamId == teamId
+        && teamTransferData(resource.data.pendingOwnershipTransferId).toUid == request.auth.uid;
+    }
+
+    /** Transfer recipient may clear `pendingOwnershipTransferId` on the sender's team (reject / expire). */
+    function transferRecipientClearsTeamPending(teamPathUid, teamId) {
+      return pendingTransferRecipientForTeam(teamPathUid, teamId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pendingOwnershipTransferId'])
+        && (
+          !request.resource.data.keys().hasAny(['pendingOwnershipTransferId'])
+          || request.resource.data.pendingOwnershipTransferId == null
         );
     }
 
@@ -124,6 +332,16 @@ service cloud.firestore {
           resource.data.ownerUid,
           resource.data.teamId,
         );
+    }
+
+    /** New owner removes stale index rows after ownership transfer (former owner no longer has the team). */
+    function newTeamOwnerClearsStaleAccessibleSquad() {
+      return authed()
+        && resource.data.ownerUid is string
+        && resource.data.teamId is string
+        && request.auth.uid != resource.data.ownerUid
+        && userTeamDocExistsFor(request.auth.uid, resource.data.teamId)
+        && !userTeamDocExistsFor(resource.data.ownerUid, resource.data.teamId);
     }
 
     function userTeamJoinInviteData(token) {
@@ -157,7 +375,56 @@ service cloud.firestore {
         && request.resource.data.memberIds is list
         && exists(/databases/$(database)/documents/users/$(request.auth.uid)/teams/$(request.resource.data.teamId))
         && request.resource.data.createdAt is timestamp;
-      allow update, delete: if authed() && resource.data.ownerUid == request.auth.uid;
+      allow update: if authed() && (
+        resource.data.ownerUid == request.auth.uid
+        || (
+          resource.data.teamId is string
+          && isTeamCoOwner(resource.data.ownerUid, resource.data.teamId)
+        )
+      );
+      allow delete: if authed() && resource.data.ownerUid == request.auth.uid;
+    }
+
+    match /teamOwnershipTransfers/{transferId} {
+      allow read: if authed() && (
+        resource.data.fromUid == request.auth.uid
+        || resource.data.toUid == request.auth.uid
+      );
+      allow create: if authed()
+        && request.resource.data.fromUid == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.toUid is string
+        && request.resource.data.toUid != request.auth.uid
+        && request.resource.data.teamId is string
+        && request.resource.data.teamName is string
+        && request.resource.data.teamSnapshot is map
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.expiresAt is timestamp
+        && userTeamDocExistsFor(request.auth.uid, request.resource.data.teamId);
+      allow update: if authed() && (
+        (
+          resource.data.toUid == request.auth.uid
+          && resource.data.status == 'pending'
+          && (
+            (
+              request.resource.data.status == 'accepted'
+              && request.resource.data.expiresAt > request.time
+            )
+            || request.resource.data.status == 'rejected'
+          )
+        )
+        || (
+          resource.data.fromUid == request.auth.uid
+          && resource.data.status == 'pending'
+          && request.resource.data.status == 'cancelled'
+        )
+        || (
+          (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid)
+          && resource.data.status == 'pending'
+          && request.resource.data.status == 'expired'
+        )
+      );
+      allow delete: if false;
     }
 
     match /users/{uid} {
@@ -167,6 +434,12 @@ service cloud.firestore {
         allow list: if authed() && request.auth.uid == uid;
 
         allow get: if authed() && request.auth.uid == uid
+          || (
+            authed()
+            && resource.data.keys().hasAny(['ownerIds'])
+            && resource.data.ownerIds is list
+            && request.auth.uid in resource.data.ownerIds
+          )
           || (
             authed()
             && resource.data.keys().hasAny(['memberIds'])
@@ -180,11 +453,23 @@ service cloud.firestore {
             && exists(/databases/$(database)/documents/userTeamJoinInvites/$(resource.data.joinInviteToken))
             && userTeamJoinInviteData(resource.data.joinInviteToken).ownerUid == uid
             && userTeamJoinInviteData(resource.data.joinInviteToken).teamId == teamId
-          );
+          )
+          || pendingTransferRecipientForTeam(uid, teamId);
 
-        allow create, delete: if authed() && request.auth.uid == uid;
+        allow create: if authed() && request.auth.uid == uid;
+        allow delete: if authed() && request.auth.uid == uid
+          || pendingTransferRecipientForTeam(uid, teamId);
 
-        allow update: if authed() && request.auth.uid == uid
+        allow update: if ownerSetsPendingOwnershipTransfer(uid)
+          || ownerClearsPendingOwnershipTransfer(uid)
+          || (
+            authed()
+            && request.auth.uid == uid
+            && primaryOwnerCannotRemoveSelfFromRoster(uid)
+          )
+          || transferRecipientClearsTeamPending(uid, teamId)
+          || coOwnerTeamUpdateAllowed(uid, teamId)
+          || coOwnerSelfRemoveOwnerIds(uid, teamId)
           || (
             authed()
             && request.auth.uid != uid
@@ -206,9 +491,32 @@ service cloud.firestore {
       match /accessibleSquads/{docId} {
         allow read: if authed() && request.auth.uid == uid;
         allow create, update: if authed() && request.auth.uid == uid
-          || accessibleSquadOwnerWrite();
+          || accessibleSquadOwnerWrite()
+          || coOwnerSelfDemoteAccessibleSquad(uid);
         allow delete: if authed() && request.auth.uid == uid
-          || accessibleSquadOwnerDelete();
+          || accessibleSquadOwnerDelete()
+          || newTeamOwnerClearsStaleAccessibleSquad();
+      }
+
+      match /notifications/{notificationId} {
+        allow read: if authed() && request.auth.uid == uid;
+        allow create: if authed() && (
+          request.auth.uid == uid
+          || ownershipTransferNotificationCreate(uid)
+          || teamCoOwnerNotificationCreate(uid)
+          || teamRosterNotificationCreate(uid)
+        );
+        allow update: if authed()
+          && request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt']);
+        allow delete: if authed() && (
+          request.auth.uid == uid
+          || (
+            resource.data.keys().hasAny(['transferId'])
+            && isTransferParty(resource.data.transferId)
+            && resource.data.kind == 'transfer_received'
+          )
+        );
       }
     }
 

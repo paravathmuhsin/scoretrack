@@ -4,8 +4,6 @@ import {
   doc,
   getDoc,
   onSnapshot,
-  orderBy,
-  query,
   serverTimestamp,
   Timestamp,
   updateDoc,
@@ -24,6 +22,7 @@ import { MatchFormCreateFields } from '../components/MatchFormCreateFields'
 import { MatchTeamPickerDialogContent } from '../components/MatchTeamPickerDialogContent'
 import { Spinner } from '../components/Spinner'
 import { usePendingWrites } from '../hooks/usePendingWrites'
+import { useSelectableUserTeams, type SelectableUserTeam } from '../hooks/useSelectableUserTeams'
 import { getDb } from '../firebase/config'
 import { deleteMatchCascade } from '../lib/deleteMatchCascade'
 import { fetchMatchEvents } from '../lib/matchEvents'
@@ -67,8 +66,14 @@ const DEFAULT_SQUAD_SIZE = 11
 const ROUND_TYPES = new Set<TournamentRoundType>(TOURNAMENT_ROUND_OPTIONS.map((o) => o.value))
 
 /** Best-effort resolve saved team id when opening an older match in edit. */
-function resolvePickFromStored(side: MatchTeamSnapshot, myTeams: (TeamDoc & { id: string })[]): string {
-  if (side.userTeamId && myTeams.some((x) => x.id === side.userTeamId)) return side.userTeamId
+function resolvePickFromStored(side: MatchTeamSnapshot, myTeams: SelectableUserTeam[]): string {
+  if (side.userTeamId) {
+    const owner = side.userTeamOwnerUid
+    const hit = myTeams.find(
+      (x) => x.id === side.userTeamId && (!owner || x.ownerUid === owner),
+    )
+    if (hit) return hit.id
+  }
   const hit = myTeams.find((x) => x.name.trim() === side.name.trim())
   if (!hit) return ''
   if (hit.players.length !== side.players.length) return ''
@@ -97,7 +102,7 @@ export function MatchFormPage() {
 
   const [tournamentName, setTournamentName] = useState<string | null>(null)
   const [tournamentDescription, setTournamentDescription] = useState<string | null>(null)
-  const [myTeams, setMyTeams] = useState<(TeamDoc & { id: string })[]>([])
+  const { teams: myTeams } = useSelectableUserTeams()
 
   const [pickA, setPickA] = useState('')
   const [pickB, setPickB] = useState('')
@@ -162,20 +167,6 @@ export function MatchFormPage() {
     if (isEdit || !tournamentIdFromUrl) return
     nav(`/app/tournaments/${tournamentIdFromUrl}?tab=matches&schedule=1`, { replace: true })
   }, [isEdit, tournamentIdFromUrl, nav])
-
-  useEffect(() => {
-    if (!user) return
-    const qy = query(collection(getDb(), 'users', user.uid, 'teams'), orderBy('name'))
-    return onSnapshot(
-      qy,
-      (snap) => {
-        const list: (TeamDoc & { id: string })[] = []
-        snap.forEach((d) => list.push({ id: d.id, ...(d.data() as TeamDoc) }))
-        setMyTeams(list)
-      },
-      () => setMyTeams([]),
-    )
-  }, [user])
 
   useEffect(() => {
     if (!tournamentId || !user?.uid) {
@@ -434,8 +425,8 @@ export function MatchFormPage() {
         }
       }
 
-      let ta: (TeamDoc & { id: string }) | undefined
-      let tb: (TeamDoc & { id: string }) | undefined
+      let ta: SelectableUserTeam | undefined
+      let tb: SelectableUserTeam | undefined
       if (!creatingInternal && !editIsInternal) {
         ta = myTeams.find((t) => t.id === pickA)
         tb = myTeams.find((t) => t.id === pickB)
@@ -492,8 +483,14 @@ export function MatchFormPage() {
         home = buildTournamentEntrySnapshot(ta, linkIdA)
         away = buildTournamentEntrySnapshot(tb, linkIdB)
       } else if (ta && tb) {
-        home = buildSnapshotFromUserTeam(ta)
-        away = buildSnapshotFromUserTeam(tb)
+        home = buildSnapshotFromUserTeam(ta, {
+          ownerUid: ta.ownerUid,
+          currentUserUid: user?.uid,
+        })
+        away = buildSnapshotFromUserTeam(tb, {
+          ownerUid: tb.ownerUid,
+          currentUserUid: user?.uid,
+        })
       } else if (isEdit && id) {
         const cur = await getDoc(doc(getDb(), 'matches', id))
         const m = cur.data() as MatchDoc

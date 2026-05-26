@@ -4,7 +4,10 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
 import { UserTeamForm } from '../components/UserTeamForm'
 import { getDb } from '../firebase/config'
+import { notifyNewCoOwners } from '../lib/coOwnerNotifications'
+import { syncAccessibleSquadsAfterRosterChange } from '../lib/accessibleSquads'
 import { buildMemberIdsFromPlayers } from '../lib/matchRosterIndex'
+import { normalizeOwnerIds } from '../lib/teamOwnerIds'
 import { cn } from '@/lib/utils'
 import type { TeamDoc } from '../types/models'
 
@@ -43,14 +46,35 @@ export function UserTeamCreatePage() {
       <UserTeamForm
         submitLabel="Create team"
         requireLocation
+        primaryUid={user.uid}
+        canManageOwners
         onSubmit={async (p) => {
-          await addDoc(collection(getDb(), 'users', user.uid, 'teams'), {
+          const ownerIds = normalizeOwnerIds(p.ownerIds, p.players, user.uid)
+          const ref = await addDoc(collection(getDb(), 'users', user.uid, 'teams'), {
             name: p.name,
             shortName: p.shortName,
             players: p.players,
             location: p.location,
             memberIds: buildMemberIdsFromPlayers(p.players),
+            ownerIds,
           } satisfies TeamDoc)
+          await syncAccessibleSquadsAfterRosterChange(getDb(), user.uid, ref.id, { ...p, ownerIds }, [])
+          const primaryDisplayName =
+            user.displayName?.trim() || user.email?.split('@')[0] || 'Team owner'
+          const newCoOwnerNames: Record<string, string> = {}
+          for (const id of ownerIds) {
+            const pl = p.players.find((x) => x.playerId === id)
+            if (pl) newCoOwnerNames[id] = pl.name
+          }
+          await notifyNewCoOwners(getDb(), {
+            primaryOwnerUid: user.uid,
+            teamId: ref.id,
+            teamName: p.name,
+            primaryDisplayName,
+            previousOwnerIds: [],
+            nextOwnerIds: ownerIds,
+            newCoOwnerNames,
+          })
           nav('/app/teams')
         }}
       />

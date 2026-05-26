@@ -1,7 +1,7 @@
 import { CalendarDays, ChevronRight, House, Plus, Search, Users, X } from 'lucide-react'
 import type { RefObject } from 'react'
 import { Link } from 'react-router-dom'
-import type { TeamDoc } from '../types/models'
+import type { SelectableUserTeam } from '../hooks/useSelectableUserTeams'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
@@ -21,8 +21,8 @@ export type MatchTeamPickerDialogContentProps = {
   pickerSearch: string
   onPickerSearchChange: (v: string) => void
   searchInputRef: RefObject<HTMLInputElement | null>
-  pickerOptions: (TeamDoc & { id: string })[]
-  filteredPickerOptions: (TeamDoc & { id: string })[]
+  pickerOptions: SelectableUserTeam[]
+  filteredPickerOptions: SelectableUserTeam[]
   excludeId: string
   tournamentId: string | null | undefined
   onSelectTeam: (teamId: string) => void
@@ -153,7 +153,7 @@ export function MatchTeamPickerDialogContent({
                 value={pickerSearch}
                 onChange={(e) => onPickerSearchChange(e.target.value)}
                 aria-label="Search teams"
-                className="h-9 flex-1 border-0 bg-transparent px-0 py-0 text-slate-900 shadow-none placeholder:text-slate-500 focus-visible:ring-0 md:text-sm"
+                className="h-9 flex-1 border-0 bg-transparent px-0 py-0 text-slate-900 shadow-none placeholder:text-placeholder-foreground focus-visible:ring-0 md:text-sm"
               />
             </div>
 
@@ -170,7 +170,7 @@ export function MatchTeamPickerDialogContent({
               ) : (
                 <ul className="m-0 list-none space-y-2 p-0">
                   {filteredPickerOptions.map((t) => (
-                    <li key={t.id}>
+                    <li key={`${t.ownerUid}_${t.id}`}>
                       <button
                         type="button"
                         className="flex min-h-[5rem] w-full items-center gap-3 rounded-xl border border-slate-100 bg-white px-3 py-3 text-left shadow-sm transition-colors hover:bg-slate-50/90"
@@ -184,6 +184,13 @@ export function MatchTeamPickerDialogContent({
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-semibold text-slate-900">{t.name}</p>
+                          {t.isCoOwned ? (
+                            <p className="mt-0.5">
+                              <span className="inline-flex rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                                Co-owner
+                              </span>
+                            </p>
+                          ) : null}
                           <p className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500">
                             <Users className="size-3 shrink-0 text-slate-400" aria-hidden />
                             {t.players.length} {t.players.length === 1 ? 'player' : 'players'}

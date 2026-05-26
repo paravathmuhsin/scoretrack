@@ -107,7 +107,7 @@ export function RegisterPage() {
                   minLength={MIN_PROFILE_NAME_LEN}
                   disabled={busy}
                   placeholder="Enter your full name"
-                  className="h-auto border-transparent bg-transparent px-0 py-0 shadow-none outline-none ring-0 focus:border-0 focus:outline-none focus:ring-0 focus-visible:!border-0 focus-visible:!ring-0 focus-visible:outline-none aria-invalid:!border-0 aria-invalid:!ring-0 text-[1.02rem] font-medium text-slate-900 placeholder:font-normal placeholder:text-[#8b909a]"
+                  className="h-auto border-transparent bg-transparent px-0 py-0 shadow-none outline-none ring-0 focus:border-0 focus:outline-none focus:ring-0 focus-visible:!border-0 focus-visible:!ring-0 focus-visible:outline-none aria-invalid:!border-0 aria-invalid:!ring-0 text-[1.02rem] font-medium text-slate-900 placeholder:font-normal placeholder:text-placeholder-foreground"
                 />
               </div>
             </div>
@@ -128,7 +128,7 @@ export function RegisterPage() {
                   maxLength={MAX_DISPLAY_NAME_LEN}
                   disabled={busy}
                   placeholder="Short display name (max 12)"
-                  className="h-auto border-transparent bg-transparent px-0 py-0 shadow-none outline-none ring-0 focus:border-0 focus:outline-none focus:ring-0 focus-visible:!border-0 focus-visible:!ring-0 focus-visible:outline-none aria-invalid:!border-0 aria-invalid:!ring-0 text-[1.02rem] font-medium text-slate-900 placeholder:font-normal placeholder:text-[#8b909a]"
+                  className="h-auto border-transparent bg-transparent px-0 py-0 shadow-none outline-none ring-0 focus:border-0 focus:outline-none focus:ring-0 focus-visible:!border-0 focus-visible:!ring-0 focus-visible:outline-none aria-invalid:!border-0 aria-invalid:!ring-0 text-[1.02rem] font-medium text-slate-900 placeholder:font-normal placeholder:text-placeholder-foreground"
                 />
               </div>
             </div>
@@ -148,7 +148,7 @@ export function RegisterPage() {
                   autoComplete="email"
                   disabled={busy}
                   placeholder="Enter your email address"
-                  className="h-auto border-0 bg-transparent px-0 py-0 text-[1.02rem] font-medium text-slate-900 shadow-none ring-0 placeholder:font-normal placeholder:text-[#8b909a] focus-visible:border-0 focus-visible:ring-0"
+                  className="h-auto border-0 bg-transparent px-0 py-0 text-[1.02rem] font-medium text-slate-900 shadow-none ring-0 placeholder:font-normal placeholder:text-placeholder-foreground focus-visible:border-0 focus-visible:ring-0"
                 />
               </div>
             </div>
@@ -169,7 +169,7 @@ export function RegisterPage() {
                   autoComplete="new-password"
                   disabled={busy}
                   placeholder="Enter your password"
-                  className="h-auto min-w-0 flex-1 border-0 bg-transparent px-0 py-0 text-[1.02rem] font-medium text-slate-900 shadow-none ring-0 placeholder:font-normal placeholder:text-[#8b909a] focus-visible:border-0 focus-visible:ring-0"
+                  className="h-auto min-w-0 flex-1 border-0 bg-transparent px-0 py-0 text-[1.02rem] font-medium text-slate-900 shadow-none ring-0 placeholder:font-normal placeholder:text-placeholder-foreground focus-visible:border-0 focus-visible:ring-0"
                 />
                 <Button
                   type="button"
@@ -204,7 +204,7 @@ export function RegisterPage() {
                   inputMode="numeric"
                   disabled={busy}
                   placeholder="Enter your mobile number"
-                  className="h-14 min-w-0 flex-1 rounded-none border-0 bg-transparent px-4 py-0 text-[1.02rem] font-medium text-slate-900 shadow-none ring-0 placeholder:font-normal placeholder:text-[#8b909a] focus-visible:border-0 focus-visible:ring-0"
+                  className="h-14 min-w-0 flex-1 rounded-none border-0 bg-transparent px-4 py-0 text-[1.02rem] font-medium text-slate-900 shadow-none ring-0 placeholder:font-normal placeholder:text-placeholder-foreground focus-visible:border-0 focus-visible:ring-0"
                 />
               </div>
             </div>

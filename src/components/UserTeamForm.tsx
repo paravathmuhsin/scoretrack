@@ -2,6 +2,11 @@ import type { LucideIcon } from 'lucide-react'
 import { MapPin, Plus, Shield, Tag, User, Users } from 'lucide-react'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import type { RosterPlayer, TeamDoc } from '../types/models'
+import {
+  isLikelyRegisteredUserId,
+  mergeProtectedRosterForCoOwnerSave,
+  normalizeOwnerIds,
+} from '../lib/teamOwnerIds'
 import { AddPlayersModal } from './AddPlayersModal'
 import { BtnPendingLabel } from './Spinner'
 import { Button } from '@/components/ui/button'
@@ -13,6 +18,7 @@ export type UserTeamFormPayload = {
   shortName: string
   location: string | null
   players: RosterPlayer[]
+  ownerIds: string[]
 }
 
 /** Team abbreviation: letters only, max length, no spaces (enforced in UI + on submit). */
@@ -30,6 +36,9 @@ type Props = {
   initial?: TeamDoc & { id: string }
   submitLabel: string
   requireLocation?: boolean
+  /** Primary owner uid (doc path). Used to normalize co-owner ids. */
+  primaryUid?: string
+  canManageOwners?: boolean
   onSubmit: (payload: UserTeamFormPayload) => Promise<void>
 }
 
@@ -87,17 +96,39 @@ function IconField({
   )
 }
 
-export function UserTeamForm({ initial, submitLabel, requireLocation = false, onSubmit }: Props) {
+export function UserTeamForm({
+  initial,
+  submitLabel,
+  requireLocation = false,
+  primaryUid = '',
+  canManageOwners = false,
+  onSubmit,
+}: Props) {
   const [name, setName] = useState(() => initial?.name ?? '')
   const [shortName, setShortName] = useState(() => normalizeTeamShortCode(initial?.shortName ?? ''))
   const [location, setLocation] = useState(() => (initial?.location ?? '').trim())
   const [players, setPlayers] = useState<RosterPlayer[]>(() => initial?.players ?? [])
+  const [ownerIds, setOwnerIds] = useState<string[]>(() => initial?.ownerIds ?? [])
   const [modalOpen, setModalOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
+  function canRemovePlayer(playerId: string): boolean {
+    if (primaryUid && playerId === primaryUid) return false
+    if (!canManageOwners && ownerIds.includes(playerId)) return false
+    return true
+  }
+
   function removePlayer(playerId: string) {
+    if (!canRemovePlayer(playerId)) return
     setPlayers((prev) => prev.filter((p) => p.playerId !== playerId))
+    setOwnerIds((prev) => prev.filter((id) => id !== playerId))
+  }
+
+  function toggleCoOwner(playerId: string) {
+    setOwnerIds((prev) =>
+      prev.includes(playerId) ? prev.filter((id) => id !== playerId) : [...prev, playerId],
+    )
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -124,13 +155,35 @@ export function UserTeamForm({ initial, submitLabel, requireLocation = false, on
       )
       return
     }
+    const protectedCoOwnerIds = canManageOwners ? [] : (initial?.ownerIds ?? ownerIds)
+    const rosterPlayers = primaryUid
+      ? mergeProtectedRosterForCoOwnerSave(
+          players,
+          initial?.players ?? players,
+          primaryUid,
+          protectedCoOwnerIds,
+        )
+      : players
+    if (
+      primaryUid &&
+      (initial?.players ?? []).some((p) => p.playerId === primaryUid) &&
+      !rosterPlayers.some((p) => p.playerId === primaryUid)
+    ) {
+      setError('The team owner cannot be removed from the squad.')
+      return
+    }
+    const normalizedOwners = canManageOwners
+      ? normalizeOwnerIds(ownerIds, rosterPlayers, primaryUid)
+      : normalizeOwnerIds(initial?.ownerIds ?? [], rosterPlayers, primaryUid)
+
     setSaving(true)
     try {
       await onSubmit({
         name: n,
         shortName: sn,
         location: normalizedLocation ? normalizedLocation : null,
-        players,
+        players: rosterPlayers,
+        ownerIds: normalizedOwners,
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save team')
@@ -162,7 +215,7 @@ export function UserTeamForm({ initial, submitLabel, requireLocation = false, on
                 autoComplete="off"
                 placeholder="Enter team name"
                 aria-label="Team name (required)"
-                className="h-9 flex-1 border-0 bg-transparent px-0 py-0 text-slate-900 shadow-none placeholder:text-slate-600 focus-visible:ring-0 md:text-sm"
+                className="h-9 flex-1 border-0 bg-transparent px-0 py-0 text-slate-900 shadow-none placeholder:text-placeholder-foreground focus-visible:ring-0 md:text-sm"
               />
             </IconField>
             <IconField icon={Tag} iconClassName="text-primary">
@@ -178,7 +231,7 @@ export function UserTeamForm({ initial, submitLabel, requireLocation = false, on
                 pattern="[A-Za-z]{1,3}"
                 placeholder="e.g. CSK"
                 aria-label="Short code, 1 to 3 letters, no spaces (required)"
-                className="h-9 flex-1 border-0 bg-transparent px-0 py-0 text-slate-900 shadow-none placeholder:text-slate-600 focus-visible:ring-0 md:text-sm"
+                className="h-9 flex-1 border-0 bg-transparent px-0 py-0 text-slate-900 shadow-none placeholder:text-placeholder-foreground focus-visible:ring-0 md:text-sm"
               />
             </IconField>
             <p className="pl-1 text-xs text-slate-500">
@@ -194,7 +247,7 @@ export function UserTeamForm({ initial, submitLabel, requireLocation = false, on
                 placeholder={requireLocation ? 'City or region' : 'City or region (optional)'}
                 autoComplete="off"
                 aria-label={requireLocation ? 'Team city (required)' : 'Team location (optional)'}
-                className="h-9 flex-1 border-0 bg-transparent px-0 py-0 text-slate-900 shadow-none placeholder:text-slate-600 focus-visible:ring-0 md:text-sm"
+                className="h-9 flex-1 border-0 bg-transparent px-0 py-0 text-slate-900 shadow-none placeholder:text-placeholder-foreground focus-visible:ring-0 md:text-sm"
               />
             </IconField>
           </div>
@@ -238,23 +291,57 @@ export function UserTeamForm({ initial, submitLabel, requireLocation = false, on
             </div>
           ) : (
             <ul className="mt-4 space-y-2">
-              {players.map((p) => (
-                <li
-                  key={p.playerId}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2.5"
-                >
-                  <span className="min-w-0 truncate font-medium text-slate-900">{p.name}</span>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-8 shrink-0 border-destructive/45 text-destructive hover:bg-destructive/5"
-                    onClick={() => removePlayer(p.playerId)}
+              {players.map((p) => {
+                const isPrimaryOwnerPlayer =
+                  Boolean(primaryUid) && p.playerId === primaryUid
+                const isCoOwner = ownerIds.includes(p.playerId)
+                const canToggleOwner =
+                  canManageOwners && isLikelyRegisteredUserId(p.playerId) && p.playerId !== primaryUid
+                return (
+                  <li
+                    key={p.playerId}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2.5 sm:flex-nowrap sm:gap-3"
                   >
-                    Remove
-                  </Button>
-                </li>
-              ))}
+                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                      <span className="min-w-0 truncate font-medium text-slate-900">{p.name}</span>
+                      {isPrimaryOwnerPlayer ? (
+                        <span className="shrink-0 rounded-full bg-slate-200/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
+                          Owner
+                        </span>
+                      ) : null}
+                      {isCoOwner && !isPrimaryOwnerPlayer ? (
+                        <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                          Co-owner
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="flex w-full shrink-0 items-center justify-end gap-2 sm:w-auto">
+                      {canToggleOwner ? (
+                        <Button
+                          type="button"
+                          variant={isCoOwner ? 'default' : 'outline'}
+                          size="sm"
+                          className="h-8 shrink-0 text-xs"
+                          onClick={() => toggleCoOwner(p.playerId)}
+                        >
+                          {isCoOwner ? 'Remove co-owner' : 'Make co-owner'}
+                        </Button>
+                      ) : null}
+                      {canRemovePlayer(p.playerId) ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 shrink-0 border-destructive/45 text-destructive hover:bg-destructive/5"
+                          onClick={() => removePlayer(p.playerId)}
+                        >
+                          Remove
+                        </Button>
+                      ) : null}
+                    </div>
+                  </li>
+                )
+              })}
             </ul>
           )}
         </div>
