@@ -38,6 +38,7 @@ import {
 import { DeleteTournamentDialog } from '../components/tournament/DeleteTournamentDialog'
 import { EndTournamentDialog } from '../components/tournament/EndTournamentDialog'
 import { TournamentAddSquadDialogContent } from '../components/tournament/TournamentAddSquadDialogContent'
+import { TournamentTeamsTab } from '../components/tournament/TournamentTeamsTab'
 import { TournamentGroupsTab } from '../components/tournament/TournamentGroupsTab'
 import { TournamentOutcomeOverviewCard } from '../components/tournament/TournamentOutcomeOverviewCard'
 import { TournamentLeaderboardTab } from '../components/tournament/TournamentLeaderboardTab'
@@ -62,7 +63,6 @@ import {
 import { deleteTournamentCascade } from '../lib/deleteTournamentCascade'
 import { incrementPottForPlayer } from '../lib/matchPlayerStatsPersistence'
 import { compareMatchesOperationalOrder } from '../lib/matchListSort'
-import { tournTeamCardAvatarLabel } from '../lib/teamAvatarLabel'
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -116,13 +116,6 @@ function AppTournamentBackLink() {
       My tournaments
     </Link>
   )
-}
-
-/** Stable hue for avatar background from team name */
-function teamAvatarHue(name: string): number {
-  let h = 0
-  for (let i = 0; i < name.length; i++) h = (h + name.charCodeAt(i) * (i + 1)) % 360
-  return h
 }
 
 export function TournamentDetailPage() {
@@ -579,10 +572,7 @@ export function TournamentDetailPage() {
     setError(null)
     const squad = myTeams.find((x) => x.id === userTeamId)
     if (!squad) return
-    if (squadAlreadyLinked(userTeamId, user.uid)) {
-      setError('That squad is already linked.')
-      return
-    }
+    if (squadAlreadyLinked(userTeamId, user.uid)) return
     if (t.teamCount != null && linkedTeams.length >= t.teamCount) {
       setError(
         `This tournament is limited to ${t.teamCount} ${t.teamCount === 1 ? 'squad' : 'squads'}. Remove one before adding another.`,
@@ -620,10 +610,7 @@ export function TournamentDetailPage() {
       setError('That squad does not have a team ID yet.')
       return
     }
-    if (squadAlreadyLinked(team.id, team.ownerUid)) {
-      setError('That squad is already linked.')
-      return
-    }
+    if (squadAlreadyLinked(team.id, team.ownerUid)) return
     if (t.teamCount != null && linkedTeams.length >= t.teamCount) {
       setError(
         `This tournament is limited to ${t.teamCount} ${t.teamCount === 1 ? 'squad' : 'squads'}. Remove one before adding another.`,
@@ -1191,106 +1178,17 @@ export function TournamentDetailPage() {
         )}
 
       {activeTab === 'teams' && (
-        <div role="tabpanel" aria-labelledby="tab-teams">
-          {!tournamentEnded && (
-            <p className="text-sm text-muted-foreground">
-              Squads live under <Link to="/app/teams">My teams</Link>; link them here for standings and the fixture draw.
-            </p>
-          )}
-
-          {!tournamentEnded && t.teamCount != null && linkedTeams.length >= t.teamCount && (
-            <p className="muted small" style={{ marginTop: '0.75rem' }}>
-              All {t.teamCount} squads for this tournament are linked. Remove a squad to add a different one.
-            </p>
-          )}
-
-          {!tournamentEnded && !(t.teamCount != null && linkedTeams.length >= t.teamCount) && (
-            <div className="tourn-team-or" aria-hidden="true">
-              <span className="tourn-team-or-line" />
-              <span className="tourn-team-or-text">OR</span>
-              <span className="tourn-team-or-line" />
-            </div>
-          )}
-
-          <div className="tourn-team-grid">
-            {!tournamentEnded && !(t.teamCount != null && linkedTeams.length >= t.teamCount) && (
-              <div className="tourn-team-card tourn-team-card--add">
-                <button
-                  type="button"
-                  className="tourn-team-card-visual tourn-team-card-visual--add tourn-team-card-plus-btn"
-                  aria-label="Open add team dialog"
-                  disabled={writePending}
-                  onClick={() => openAddTeamModal()}
-                >
-                  +
-                </button>
-                <div className="tourn-team-card-footer">
-                  <span className="tourn-team-card-kicker">Add teams</span>
-                  <p className="tourn-team-card-hint muted small">
-                    Click <strong>+</strong> to search squads from My teams and add them to this tournament.
-                  </p>
-                  {myTeams.length === 0 && (
-                    <p className="tourn-team-card-hint muted small">
-                      No squads yet — <Link to="/app/teams/new">create one</Link> first.
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {linkedTeams.map((l) => {
-              const ownerUid = l.userTeamOwnerUid ?? user.uid
-              const squad = myTeams.find((m) => m.id === l.userTeamId && ownerUid === user.uid)
-              const label = l.teamName ?? squad?.name ?? l.userTeamId
-              const shortName = squad?.shortName?.trim() || l.teamShortName?.trim()
-              const hue = teamAvatarHue(label)
-              const pending = l.linkApprovalStatus === 'pending'
-              const editHref =
-                ownerUid === user.uid
-                  ? `/app/teams/${l.userTeamId}`
-                  : `/app/teams/${l.userTeamId}?owner=${encodeURIComponent(ownerUid)}`
-              return (
-                <article key={l.id} className="tourn-team-card">
-                  <div
-                    className="tourn-team-card-visual"
-                    style={{ background: `hsl(${hue} 32% 38%)` }}
-                    aria-hidden="true"
-                  >
-                    <span className="tourn-team-card-initials">
-                      {tournTeamCardAvatarLabel({ name: label, shortName })}
-                    </span>
-                  </div>
-                  <div className="tourn-team-card-footer">
-                    <strong className="tourn-team-card-title">{label}</strong>
-                    {pending ? (
-                      <p className="mt-1 text-xs font-semibold text-amber-700">Awaiting approval</p>
-                    ) : null}
-                    {!tournamentEnded ? (
-                      <div className="tourn-team-card-actions">
-                        <Link className="tourn-team-card-link" to={editHref}>
-                          {squad ? 'Edit roster' : 'View squad'}
-                        </Link>
-                        <button
-                          type="button"
-                          className="tourn-team-card-remove"
-                          disabled={writePending}
-                          onClick={() => setLinkedTeamToRemove({ id: l.id, label })}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                </article>
-              )
-            })}
-          </div>
-          {error && (
-            <p className="error" style={{ marginTop: '1rem' }}>
-              {error}
-            </p>
-          )}
-        </div>
+        <TournamentTeamsTab
+          tournamentEnded={tournamentEnded}
+          teamCount={t.teamCount}
+          linkedTeams={linkedTeams}
+          myTeams={myTeams}
+          currentUserUid={user.uid}
+          writePending={writePending}
+          error={error}
+          onAddSquad={() => openAddTeamModal()}
+          onRemoveSquad={(payload) => setLinkedTeamToRemove(payload)}
+        />
       )}
 
       {activeTab === 'matches' && (
@@ -1589,6 +1487,7 @@ export function TournamentDetailPage() {
           error={error}
           onSelectSquad={(teamId) => void linkSquad(teamId)}
           onSelectGlobalSquad={(team) => void linkGlobalSquad(team)}
+          isGlobalSquadAlreadyLinked={(team) => squadAlreadyLinked(team.id, team.ownerUid)}
           onClose={() => closeAddTeamModal()}
         />
       </dialog>

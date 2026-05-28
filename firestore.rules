@@ -230,6 +230,31 @@ service cloud.firestore {
         && tournamentDoc(tid).data.isPublic == true;
     }
 
+    /** External squad owner/co-owner responding to a tournament link invite. */
+    function isTournamentLinkedTeamParty() {
+      return authed()
+        && resource.data.keys().hasAny(['userTeamOwnerUid'])
+        && resource.data.userTeamOwnerUid is string
+        && resource.data.userTeamId is string
+        && (
+          request.auth.uid == resource.data.userTeamOwnerUid
+          || isUidInTeamOwnerIds(
+            resource.data.userTeamOwnerUid,
+            resource.data.userTeamId,
+            request.auth.uid,
+          )
+        );
+    }
+
+    function tournamentLinkedTeamPartyResolvesPending() {
+      return isTournamentLinkedTeamParty()
+        && resource.data.linkApprovalStatus == 'pending'
+        && (
+          request.resource.data.linkApprovalStatus == 'accepted'
+          || request.resource.data.linkApprovalStatus == 'rejected'
+        );
+    }
+
     /** teamCount is set only at create; updates must leave it unchanged (or absent on legacy docs). */
     function tournamentTeamCountImmutable() {
       return !resource.data.keys().hasAny(['teamCount'])
@@ -610,7 +635,10 @@ service cloud.firestore {
       allow read, write: if authed() && request.auth.uid == uid;
 
       match /teams/{teamId} {
-        allow list: if authed() && request.auth.uid == uid;
+        allow list: if authed() && (
+          request.auth.uid == uid
+          || teamHasTeamNumberForLookup()
+        );
 
         allow get: if authed() && request.auth.uid == uid
           || (
@@ -833,7 +861,7 @@ service cloud.firestore {
       allow delete: if tournamentOwner(tid);
 
       match /linkedTeams/{linkId} {
-        allow read: if tournamentPublic(tid) || tournamentOwner(tid);
+        allow read: if tournamentPublic(tid) || tournamentOwner(tid) || isTournamentLinkedTeamParty();
         allow create: if tournamentOwner(tid)
           && request.resource.data.userTeamId is string
           && (
@@ -853,23 +881,12 @@ service cloud.firestore {
               )
             )
           );
-        allow update: if tournamentOwner(tid)
+        allow update: if tournamentOwner(tid) || tournamentLinkedTeamPartyResolvesPending();
+        allow delete: if tournamentOwner(tid)
           || (
-            authed()
-            && resource.data.keys().hasAny(['userTeamOwnerUid'])
-            && resource.data.userTeamOwnerUid is string
+            isTournamentLinkedTeamParty()
             && resource.data.linkApprovalStatus == 'pending'
-            && request.resource.data.linkApprovalStatus == 'accepted'
-            && (
-              request.auth.uid == resource.data.userTeamOwnerUid
-              || isUidInTeamOwnerIds(
-                resource.data.userTeamOwnerUid,
-                resource.data.userTeamId,
-                request.auth.uid,
-              )
-            )
           );
-        allow delete: if tournamentOwner(tid);
       }
 
       match /groups/{gid} {

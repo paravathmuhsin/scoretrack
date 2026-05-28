@@ -11,6 +11,9 @@ function payload(
   recipientUid: string,
 ): MatchParticipationNotification {
   const isCreator = recipientUid === invite.createdBy
+  const otherDisplayName = isCreator
+    ? undefined
+    : invite.creatorDisplayName?.trim() || undefined
   return {
     type: 'match_participation',
     kind,
@@ -21,7 +24,7 @@ function payload(
     teamNumber: invite.teamNumber,
     side: invite.side,
     otherUid: isCreator ? invite.teamOwnerUid : invite.createdBy,
-    otherDisplayName: isCreator ? undefined : invite.creatorDisplayName,
+    ...(otherDisplayName ? { otherDisplayName } : {}),
     scheduledAt: invite.scheduledAt,
     createdAt: Timestamp.now(),
   }

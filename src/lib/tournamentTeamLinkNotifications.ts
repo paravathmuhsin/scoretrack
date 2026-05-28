@@ -11,6 +11,9 @@ function payload(
   recipientUid: string,
 ): TournamentTeamLinkNotification {
   const isOrganiser = recipientUid === invite.createdBy
+  const otherDisplayName = isOrganiser
+    ? undefined
+    : invite.organiserDisplayName?.trim() || undefined
   return {
     type: 'tournament_team_link',
     kind,
@@ -22,7 +25,7 @@ function payload(
     teamName: invite.teamName,
     teamNumber: invite.teamNumber,
     otherUid: isOrganiser ? invite.teamOwnerUid : invite.createdBy,
-    otherDisplayName: isOrganiser ? undefined : invite.organiserDisplayName,
+    ...(otherDisplayName ? { otherDisplayName } : {}),
     createdAt: Timestamp.now(),
   }
 }

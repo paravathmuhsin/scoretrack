@@ -163,16 +163,14 @@ export function CreateTournamentGroupDialog({
                 {isEdit ? 'Edit group' : 'Create group'}
               </h2>
               <p className="mt-1 text-sm text-slate-600">
-                {isEdit
-                  ? 'Update the pool name and which squads belong here (at least two teams).'
-                  : 'League-stage pools: choose a name and add teams to this group (at least two).'}
+                {isEdit ? 'Update this pool’s name and squads.' : 'Name the pool and add squads.'}
               </p>
             </div>
           </div>
         </div>
 
         <form noValidate onSubmit={(e) => void handleSubmit(e)} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden px-5 py-4">
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden px-5 pt-2 pb-4">
             <div className="shrink-0 space-y-2">
               <label htmlFor={`${fieldId}-name`} className="block text-sm font-semibold text-slate-900">
                 Group name

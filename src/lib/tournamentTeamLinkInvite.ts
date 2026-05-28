@@ -117,7 +117,7 @@ export async function rejectTournamentTeamLink(
       resolvedAt: Timestamp.now(),
       respondedByUid: responderUid,
     })
-    tx.update(linkRef, { linkApprovalStatus: 'rejected' })
+    tx.delete(linkRef)
   })
 
   const resolved = {

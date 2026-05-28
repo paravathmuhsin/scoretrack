@@ -153,16 +153,40 @@ async function lookupViaCollectionGroup(
   db: Firestore,
   teamNumber: number,
 ): Promise<ResolvedTeamByNumber | null> {
-  const qy = query(collectionGroup(db, 'teams'), where('teamNumber', '==', teamNumber))
-  const snap = await getDocs(qy)
-  if (snap.empty) return null
-  const teamSnap = snap.docs[0]!
-  const ownerUid = teamSnap.ref.parent.parent?.id
-  if (!ownerUid) return null
-  return {
-    ownerUid,
-    teamId: teamSnap.id,
-    team: { id: teamSnap.id, ...(teamSnap.data() as TeamDoc) },
+  try {
+    const qy = query(collectionGroup(db, 'teams'), where('teamNumber', '==', teamNumber))
+    const snap = await getDocs(qy)
+    if (snap.empty) return null
+    const teamSnap = snap.docs[0]!
+    const ownerUid = teamSnap.ref.parent.parent?.id
+    if (!ownerUid) return null
+    return {
+      ownerUid,
+      teamId: teamSnap.id,
+      team: { id: teamSnap.id, ...(teamSnap.data() as TeamDoc) },
+    }
+  } catch (err) {
+    if (isPermissionDenied(err)) return null
+    throw err
+  }
+}
+
+async function resolveTeamFromRegistry(
+  db: Firestore,
+  ownerUid: string,
+  teamId: string,
+): Promise<ResolvedTeamByNumber | null> {
+  try {
+    const teamSnap = await getDoc(doc(db, 'users', ownerUid, 'teams', teamId))
+    if (!teamSnap.exists()) return null
+    return {
+      ownerUid,
+      teamId,
+      team: { id: teamSnap.id, ...(teamSnap.data() as TeamDoc) },
+    }
+  } catch (err) {
+    if (isPermissionDenied(err)) return null
+    throw err
   }
 }
 
@@ -175,21 +199,14 @@ export async function lookupTeamByNumber(
     const regSnap = await getDoc(registryRef)
     if (regSnap.exists()) {
       const { ownerUid, teamId } = regSnap.data() as TeamNumberRegistryDoc
-      const teamSnap = await getDoc(doc(db, 'users', ownerUid, 'teams', teamId))
-      if (teamSnap.exists()) {
-        return {
-          ownerUid,
-          teamId,
-          team: { id: teamSnap.id, ...(teamSnap.data() as TeamDoc) },
-        }
-      }
+      return resolveTeamFromRegistry(db, ownerUid, teamId)
     }
+    return lookupViaCollectionGroup(db, teamNumber)
   } catch (err) {
     if (!isPermissionDenied(err)) throw err
     // Registry read blocked (e.g. rules not deployed) — fall back to collection group.
+    return lookupViaCollectionGroup(db, teamNumber)
   }
-
-  return lookupViaCollectionGroup(db, teamNumber)
 }
 
 /** Primary owner + co-owners who can act for the squad. */

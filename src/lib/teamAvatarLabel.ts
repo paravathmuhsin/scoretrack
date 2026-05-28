@@ -32,3 +32,10 @@ export function teamAvatarLabel(team: Pick<MatchTeamSnapshot, 'name' | 'shortNam
 export function tournTeamCardAvatarLabel(team: Pick<MatchTeamSnapshot, 'name' | 'shortName'>): string {
   return teamAvatarLabel(team)
 }
+
+/** Stable hue (0–359) for avatar backgrounds from a display name. */
+export function teamAvatarHue(name: string): number {
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = (h + name.charCodeAt(i) * (i + 1)) % 360
+  return h
+}

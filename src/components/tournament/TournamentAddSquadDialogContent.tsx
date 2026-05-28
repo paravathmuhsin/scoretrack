@@ -1,5 +1,5 @@
-import { Loader2, Plus, Search, Users, X } from 'lucide-react'
-import type { RefObject } from 'react'
+import { Info, Loader2, Plus, Search, Users, X } from 'lucide-react'
+import { type RefObject, useId, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { SelectableUserTeam } from '../../hooks/useSelectableUserTeams'
 import type { TeamDoc } from '../../types/models'
@@ -10,14 +10,8 @@ import { cn } from '@/lib/utils'
 import { tournamentModalFooterSinglePrimaryButtonClass } from './tournamentModalFooterButtons'
 
 /** Match AddPlayersModal / squad picker results scroll cap */
-const RESULTS_SCROLL_MAX_H = 'calc(1.75 * 5rem)'
-
-function teamInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (parts.length >= 2) return (parts[0]![0]! + parts[1]![0]!).toUpperCase()
-  const s = parts[0] ?? '?'
-  return s.slice(0, 2).toUpperCase()
-}
+const RESULTS_SCROLL_MAX_H = 'calc(1.75 * 3.5rem)'
+const SQUAD_SEARCH_HINT = 'Type to filter, then tap each squad to add it.'
 
 export type TournamentAddSquadDialogContentProps = {
   titleId: string
@@ -34,6 +28,7 @@ export type TournamentAddSquadDialogContentProps = {
   error: string | null
   onSelectSquad: (teamId: string) => void
   onSelectGlobalSquad?: (team: SelectableUserTeam) => void
+  isGlobalSquadAlreadyLinked?: (team: SelectableUserTeam) => boolean
   onClose: () => void
 }
 
@@ -51,13 +46,17 @@ export function TournamentAddSquadDialogContent({
   error,
   onSelectSquad,
   onSelectGlobalSquad,
+  isGlobalSquadAlreadyLinked,
   onClose,
 }: TournamentAddSquadDialogContentProps) {
+  const [searchHintOpen, setSearchHintOpen] = useState(false)
+  const searchHintId = useId()
+
   const subtitle =
     teamSlotsRemaining != null
       ? teamSlotsRemaining === 0
         ? 'This tournament has no open squad slots.'
-        : `Tap squads to add them (${teamSlotsRemaining} slot${teamSlotsRemaining === 1 ? '' : 's'} left). Close when finished.`
+        : `Tap squads to add them (${teamSlotsRemaining} slot${teamSlotsRemaining === 1 ? '' : 's'} left).`
       : 'Tap squads to add them. You can add several without closing this dialog.'
   const createSquadFooter = (
     <div className="border-t border-slate-100 px-5 py-4">
@@ -99,7 +98,7 @@ export function TournamentAddSquadDialogContent({
   const emptyAllLinked = (
     <div className="flex flex-col gap-4 px-5 py-4">
       <p className="text-sm leading-relaxed text-slate-600">
-        All of your squads are already linked to this tournament. Remove one from the grid to swap in a different squad.
+        All of your squads are already linked to this tournament.
       </p>
     </div>
   )
@@ -139,42 +138,98 @@ export function TournamentAddSquadDialogContent({
       ) : linkableTeams.length === 0 ? (
         <>
           {emptyAllLinked}
+          {onSelectGlobalSquad ? (
+            <div className="px-5 pb-4">
+              <GlobalTeamSearchPanel
+                variant="section"
+                showDivider={false}
+                disabled={writePending}
+                isTeamAlreadyLinked={isGlobalSquadAlreadyLinked}
+                onSelect={(team) => onSelectGlobalSquad(team)}
+              />
+            </div>
+          ) : null}
+          {error ? (
+            <p className="shrink-0 px-5 pb-4 text-sm text-destructive" role="alert">
+              {error}
+            </p>
+          ) : null}
+          <div className="border-t border-slate-100 px-5 py-4">
+            <Button
+              type="button"
+              variant="default"
+              className={tournamentModalFooterSinglePrimaryButtonClass}
+              disabled={writePending}
+              onClick={onClose}
+            >
+              Done
+            </Button>
+          </div>
           {createSquadFooter}
         </>
       ) : (
         <>
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden px-5 py-4">
-            <div
-              className={cn(
-                'flex h-11 shrink-0 items-center gap-2 rounded-xl border-2 border-primary bg-white px-3 shadow-sm transition-shadow',
-                'focus-within:ring-[3px] focus-within:ring-primary/15',
-              )}
-            >
-              <Search className="size-4 shrink-0 text-slate-400" aria-hidden />
-              <Input
-                ref={searchInputRef}
-                type="search"
-                autoComplete="off"
-                autoFocus
-                placeholder="Search your squads by name…"
-                value={search}
-                onChange={(e) => onSearchChange(e.target.value)}
-                aria-label="Search squads"
-                className="h-9 flex-1 border-0 bg-transparent px-0 py-0 text-slate-900 shadow-none placeholder:text-placeholder-foreground focus-visible:ring-0 md:text-sm"
-              />
-              {search ? (
+            <div className="shrink-0 space-y-2">
+              <div className="flex items-center gap-2">
+                <div
+                  className={cn(
+                    'flex h-11 min-w-0 flex-1 items-center gap-2 rounded-xl border-2 border-primary bg-white px-3 shadow-sm transition-shadow',
+                    'focus-within:ring-[3px] focus-within:ring-primary/15',
+                  )}
+                >
+                  <Search className="size-4 shrink-0 text-slate-400" aria-hidden />
+                  <Input
+                    ref={searchInputRef}
+                    type="search"
+                    autoComplete="off"
+                    autoFocus
+                    placeholder="Search your squads by name…"
+                    value={search}
+                    onChange={(e) => onSearchChange(e.target.value)}
+                    aria-label="Search squads"
+                    className="h-9 flex-1 border-0 bg-transparent px-0 py-0 text-slate-900 shadow-none placeholder:text-placeholder-foreground focus-visible:ring-0 md:text-sm"
+                  />
+                  {search ? (
+                    <button
+                      type="button"
+                      className="inline-flex size-7 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                      aria-label="Clear search"
+                      onClick={() => onSearchChange('')}
+                    >
+                      <X className="size-3.5" strokeWidth={2.5} />
+                    </button>
+                  ) : null}
+                </div>
                 <button
                   type="button"
-                  className="inline-flex size-7 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                  aria-label="Clear search"
-                  onClick={() => onSearchChange('')}
+                  className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                  aria-label="Squad search tips"
+                  aria-expanded={searchHintOpen}
+                  aria-controls={searchHintId}
+                  onClick={() => setSearchHintOpen((o) => !o)}
                 >
-                  <X className="size-3.5" strokeWidth={2.5} />
+                  <Info className="size-4" strokeWidth={2.2} aria-hidden />
                 </button>
-              ) : null}
+              </div>
+              <div
+                id={searchHintId}
+                role="region"
+                aria-live="polite"
+                hidden={!searchHintOpen}
+                className="relative rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5 pr-9 text-xs leading-relaxed text-slate-600"
+              >
+                <button
+                  type="button"
+                  className="absolute right-2 top-2 inline-flex size-5 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-700"
+                  aria-label="Close squad search tips"
+                  onClick={() => setSearchHintOpen(false)}
+                >
+                  <X className="size-3.5" strokeWidth={2.5} aria-hidden />
+                </button>
+                {SQUAD_SEARCH_HINT}
+              </div>
             </div>
-
-            <p className="shrink-0 text-xs text-slate-400">Type to filter, then tap each squad to add it.</p>
 
             <p className="shrink-0 text-xs font-bold uppercase tracking-wider text-slate-400">Your squads</p>
 
@@ -195,48 +250,36 @@ export function TournamentAddSquadDialogContent({
                       <button
                         type="button"
                         className={cn(
-                          'flex min-h-[5rem] w-full items-center gap-3 rounded-xl border border-slate-100 bg-white px-3 py-3 text-left shadow-sm transition-colors hover:bg-slate-50/90 disabled:opacity-55',
+                          'flex w-full items-center rounded-xl border border-slate-100 bg-white px-3 py-3 text-left shadow-sm transition-colors hover:bg-slate-50/90 disabled:opacity-55',
                           isLinking && 'border-primary/30 bg-primary/5',
                         )}
                         disabled={writePending}
                         aria-busy={isLinking}
                         onClick={() => onSelectSquad(s.id)}
                       >
-                        <div
-                          className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary"
-                          aria-hidden
-                        >
-                          {teamInitials(s.name)}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate font-semibold text-slate-900">{s.name}</p>
-                          <p className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500">
-                            {isLinking ? (
-                              <>
-                                <Loader2 className="size-3 shrink-0 animate-spin text-primary" aria-hidden />
-                                Adding…
-                              </>
-                            ) : (
-                              <>
-                                <Users className="size-3 shrink-0 text-slate-400" aria-hidden />
-                                {s.players.length} {s.players.length === 1 ? 'player' : 'players'}
-                              </>
-                            )}
-                          </p>
-                        </div>
-                        <span
-                          className={cn(
-                            'flex size-9 shrink-0 items-center justify-center rounded-full',
-                            isLinking ? 'bg-primary/10 text-primary' : 'bg-slate-100 text-slate-500',
-                          )}
-                          aria-hidden
-                        >
+                        <p className="flex min-w-0 flex-1 items-center gap-1 text-sm">
+                          <span className="min-w-0 truncate font-semibold text-slate-900">{s.name}</span>
                           {isLinking ? (
-                            <Loader2 className="size-4 animate-spin" strokeWidth={2.2} />
+                            <span className="shrink-0 font-normal text-slate-500">Adding…</span>
                           ) : (
-                            <Plus className="size-4" strokeWidth={2.5} />
+                            <span className="shrink-0 font-normal text-slate-500">
+                              ({s.players.length} {s.players.length === 1 ? 'player' : 'players'})
+                            </span>
                           )}
-                        </span>
+                          <span
+                            className={cn(
+                              'ml-auto flex size-7 shrink-0 items-center justify-center rounded-full',
+                              isLinking ? 'text-primary' : 'bg-slate-100 text-slate-500',
+                            )}
+                            aria-hidden
+                          >
+                            {isLinking ? (
+                              <Loader2 className="size-4 animate-spin" strokeWidth={2.2} />
+                            ) : (
+                              <Plus className="size-4" strokeWidth={2.5} />
+                            )}
+                          </span>
+                        </p>
                       </button>
                     </li>
                     )
@@ -247,8 +290,9 @@ export function TournamentAddSquadDialogContent({
 
             {onSelectGlobalSquad ? (
               <GlobalTeamSearchPanel
-                className="shrink-0"
+                variant="section"
                 disabled={writePending}
+                isTeamAlreadyLinked={isGlobalSquadAlreadyLinked}
                 onSelect={(team) => onSelectGlobalSquad(team)}
               />
             ) : null}

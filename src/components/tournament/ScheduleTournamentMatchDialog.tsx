@@ -25,7 +25,12 @@ import {
 } from './tournamentModalFooterButtons'
 import { createScheduledTournamentMatch } from '../../lib/tournamentCreateMatch'
 import { buildTournamentFixtureLabel } from '../../lib/tournamentFixtureLabel'
-import { buildTournamentEntrySnapshot } from '../../lib/tournamentMatchSnapshots'
+import {
+  buildTournamentEntrySnapshotForLink,
+  fetchTeamDocForLinkedSquad,
+  squadDisplayName,
+} from '../../lib/tournamentScheduleTeams'
+import { linkedTeamIsApproved } from '../../lib/tournamentTeamLinkInvite'
 import type {
   TeamDoc,
   TournamentDoc,
@@ -282,11 +287,16 @@ export function ScheduleTournamentMatchDialog({
 
   const selectedGroup = useMemo(() => groups.find((g) => g.id === groupId), [groups, groupId])
 
+  const approvedLinkedTeams = useMemo(
+    () => linkedTeams.filter(linkedTeamIsApproved),
+    [linkedTeams],
+  )
+
   const leagueLinkOptions = useMemo(() => {
     if (!selectedGroup) return []
     const allow = new Set(selectedGroup.linkedTeamIds ?? [])
-    return linkedTeams.filter((l) => allow.has(l.id))
-  }, [selectedGroup, linkedTeams])
+    return approvedLinkedTeams.filter((l) => allow.has(l.id))
+  }, [selectedGroup, approvedLinkedTeams])
 
   useEffect(() => {
     if (autoFirstSquad1Ut && !leagueLinkOptions.some((l) => l.userTeamId === autoFirstSquad1Ut)) {
@@ -297,7 +307,10 @@ export function ScheduleTournamentMatchDialog({
     }
   }, [leagueLinkOptions, autoFirstSquad1Ut, autoFirstSquad2Ut])
 
-  const allKoOptions = useMemo(() => [...linkedTeams].sort((a, b) => linkLabel(a, myTeams).localeCompare(linkLabel(b, myTeams))), [linkedTeams, myTeams])
+  const allKoOptions = useMemo(
+    () => [...approvedLinkedTeams].sort((a, b) => linkLabel(a, myTeams).localeCompare(linkLabel(b, myTeams))),
+    [approvedLinkedTeams, myTeams],
+  )
 
   const ms = defaultMatchSettings(tournament)
 
@@ -305,12 +318,32 @@ export function ScheduleTournamentMatchDialog({
     onClose()
   }
 
-  function teamForUserTeamId(userTeamId: string): (TeamDoc & { id: string }) | undefined {
-    return myTeams.find((m) => m.id === userTeamId)
+  function linkForUserTeamId(userTeamId: string): (TournamentLinkedTeamDoc & { id: string }) | undefined {
+    return approvedLinkedTeams.find((l) => l.userTeamId === userTeamId)
   }
 
-  function linkForUserTeamId(userTeamId: string): (TournamentLinkedTeamDoc & { id: string }) | undefined {
-    return linkedTeams.find((l) => l.userTeamId === userTeamId)
+  async function resolveLinkedSquadPair(
+    db: ReturnType<typeof getDb>,
+    homeUt: string,
+    awayUt: string,
+  ): Promise<
+    | {
+        lh: TournamentLinkedTeamDoc & { id: string }
+        la: TournamentLinkedTeamDoc & { id: string }
+        th: TeamDoc & { id: string }
+        ta: TeamDoc & { id: string }
+      }
+    | null
+  > {
+    const lh = linkForUserTeamId(homeUt)
+    const la = linkForUserTeamId(awayUt)
+    if (!lh || !la) return null
+    const [th, ta] = await Promise.all([
+      fetchTeamDocForLinkedSquad(db, lh, organiserUid, myTeams),
+      fetchTeamDocForLinkedSquad(db, la, organiserUid, myTeams),
+    ])
+    if (!th || !ta) return null
+    return { lh, la, th, ta }
   }
 
   function validateDistinct(ids: string[]): string | null {
@@ -444,21 +477,24 @@ export function ScheduleTournamentMatchDialog({
         const gid = selectedGroup!.id
 
         if (leagueMode === 'manual') {
-          const lh = linkForUserTeamId(manualHomeUt)
-          const la = linkForUserTeamId(manualAwayUt)
-          const th = teamForUserTeamId(manualHomeUt)
-          const ta = teamForUserTeamId(manualAwayUt)
-          if (!lh || !la || !th || !ta) {
+          const resolved = await resolveLinkedSquadPair(db, manualHomeUt, manualAwayUt)
+          if (!resolved) {
             toast.error('Could not resolve teams. Refresh and try again.')
             return
           }
-          const label = buildTournamentFixtureLabel(th.name, ta.name, 'league', gName)
+          const { lh, la, th, ta } = resolved
+          const label = buildTournamentFixtureLabel(
+            squadDisplayName(th, lh),
+            squadDisplayName(ta, la),
+            'league',
+            gName,
+          )
           await run(() =>
             createScheduledTournamentMatch(db, {
               tournamentId,
               organiserUid,
-              home: buildTournamentEntrySnapshot(th, lh.id),
-              away: buildTournamentEntrySnapshot(ta, la.id),
+              home: buildTournamentEntrySnapshotForLink(th, lh, organiserUid),
+              away: buildTournamentEntrySnapshotForLink(ta, la, organiserUid),
               scheduledAt: nextTime(),
               label,
               tournamentRound: 'league',
@@ -485,19 +521,26 @@ export function ScheduleTournamentMatchDialog({
         for (const [linkA, linkB] of pairs) {
           for (let rep = 1; rep <= meetings; rep++) {
             const swap = rep % 2 === 0
-            const la = linkedTeams.find((l) => l.id === (swap ? linkB : linkA))
-            const lb = linkedTeams.find((l) => l.id === (swap ? linkA : linkB))
+            const la = approvedLinkedTeams.find((l) => l.id === (swap ? linkB : linkA))
+            const lb = approvedLinkedTeams.find((l) => l.id === (swap ? linkA : linkB))
             if (!la || !lb) continue
-            const th = teamForUserTeamId(la.userTeamId)
-            const ta = teamForUserTeamId(lb.userTeamId)
+            const [th, ta] = await Promise.all([
+              fetchTeamDocForLinkedSquad(db, la, organiserUid, myTeams),
+              fetchTeamDocForLinkedSquad(db, lb, organiserUid, myTeams),
+            ])
             if (!th || !ta) continue
-            const label = buildTournamentFixtureLabel(th.name, ta.name, 'league', gName)
+            const label = buildTournamentFixtureLabel(
+              squadDisplayName(th, la),
+              squadDisplayName(ta, lb),
+              'league',
+              gName,
+            )
             await run(() =>
               createScheduledTournamentMatch(db, {
                 tournamentId,
                 organiserUid,
-                home: buildTournamentEntrySnapshot(th, la.id),
-                away: buildTournamentEntrySnapshot(ta, lb.id),
+                home: buildTournamentEntrySnapshotForLink(th, la, organiserUid),
+                away: buildTournamentEntrySnapshotForLink(ta, lb, organiserUid),
                 scheduledAt: nextTime(),
                 label,
                 tournamentRound: 'league',
@@ -538,21 +581,23 @@ export function ScheduleTournamentMatchDialog({
       }
 
       for (const { homeUt, awayUt } of fixtures) {
-        const lh = linkForUserTeamId(homeUt)
-        const la = linkForUserTeamId(awayUt)
-        const th = teamForUserTeamId(homeUt)
-        const ta = teamForUserTeamId(awayUt)
-        if (!lh || !la || !th || !ta) {
+        const resolved = await resolveLinkedSquadPair(db, homeUt, awayUt)
+        if (!resolved) {
           toast.error('Every team must be linked to this tournament (Teams tab).')
           return
         }
-        const label = buildTournamentFixtureLabel(th.name, ta.name, round)
+        const { lh, la, th, ta } = resolved
+        const label = buildTournamentFixtureLabel(
+          squadDisplayName(th, lh),
+          squadDisplayName(ta, la),
+          round,
+        )
         await run(() =>
           createScheduledTournamentMatch(db, {
             tournamentId,
             organiserUid,
-            home: buildTournamentEntrySnapshot(th, lh.id),
-            away: buildTournamentEntrySnapshot(ta, la.id),
+            home: buildTournamentEntrySnapshotForLink(th, lh, organiserUid),
+            away: buildTournamentEntrySnapshotForLink(ta, la, organiserUid),
             scheduledAt: nextTime(),
             label,
             tournamentRound: round,
@@ -854,7 +899,11 @@ export function ScheduleTournamentMatchDialog({
                     label="Home team"
                     placeholder="Select team"
                     value={manualHomeUt}
-                    onChange={(e) => setManualHomeUt(e.target.value)}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      setManualHomeUt(v)
+                      if (v && v === manualAwayUt) setManualAwayUt('')
+                    }}
                     disabled={writePending}
                   >
                     {leagueLinkOptions.map((l) => (
@@ -871,11 +920,13 @@ export function ScheduleTournamentMatchDialog({
                     onChange={(e) => setManualAwayUt(e.target.value)}
                     disabled={writePending}
                   >
-                    {leagueLinkOptions.map((l) => (
-                      <option key={`a-${l.id}`} value={l.userTeamId}>
-                        {linkLabel(l, myTeams)}
-                      </option>
-                    ))}
+                    {leagueLinkOptions
+                      .filter((l) => l.userTeamId !== manualHomeUt)
+                      .map((l) => (
+                        <option key={`a-${l.id}`} value={l.userTeamId}>
+                          {linkLabel(l, myTeams)}
+                        </option>
+                      ))}
                   </ScheduleFieldSelect>
                 </>
               )}
@@ -889,7 +940,11 @@ export function ScheduleTournamentMatchDialog({
                 label="Home team"
                 placeholder="Select team"
                 value={finalA}
-                onChange={(e) => setFinalA(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value
+                  setFinalA(v)
+                  if (v && v === finalB) setFinalB('')
+                }}
                 disabled={writePending}
               >
                 {allKoOptions.map((l) => (
@@ -906,11 +961,13 @@ export function ScheduleTournamentMatchDialog({
                 onChange={(e) => setFinalB(e.target.value)}
                 disabled={writePending}
               >
-                {allKoOptions.map((l) => (
-                  <option key={`b-${l.id}`} value={l.userTeamId}>
-                    {linkLabel(l, myTeams)}
-                  </option>
-                ))}
+                {allKoOptions
+                  .filter((l) => l.userTeamId !== finalA)
+                  .map((l) => (
+                    <option key={`b-${l.id}`} value={l.userTeamId}>
+                      {linkLabel(l, myTeams)}
+                    </option>
+                  ))}
               </ScheduleFieldSelect>
             </>
           )}
@@ -923,7 +980,11 @@ export function ScheduleTournamentMatchDialog({
                 label="Home team"
                 placeholder="Select team"
                 value={semi1h}
-                onChange={(e) => setSemi1h(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value
+                  setSemi1h(v)
+                  if (v && v === semi1a) setSemi1a('')
+                }}
                 disabled={writePending}
               >
                 {allKoOptions.map((l) => (
@@ -940,11 +1001,13 @@ export function ScheduleTournamentMatchDialog({
                 onChange={(e) => setSemi1a(e.target.value)}
                 disabled={writePending}
               >
-                {allKoOptions.map((l) => (
-                  <option key={`s1a-${l.id}`} value={l.userTeamId}>
-                    {linkLabel(l, myTeams)}
-                  </option>
-                ))}
+                {allKoOptions
+                  .filter((l) => l.userTeamId !== semi1h)
+                  .map((l) => (
+                    <option key={`s1a-${l.id}`} value={l.userTeamId}>
+                      {linkLabel(l, myTeams)}
+                    </option>
+                  ))}
               </ScheduleFieldSelect>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Semi final B</p>
               <ScheduleFieldSelect
@@ -952,7 +1015,11 @@ export function ScheduleTournamentMatchDialog({
                 label="Home team"
                 placeholder="Select team"
                 value={semi2h}
-                onChange={(e) => setSemi2h(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value
+                  setSemi2h(v)
+                  if (v && v === semi2a) setSemi2a('')
+                }}
                 disabled={writePending}
               >
                 {allKoOptions.map((l) => (
@@ -969,31 +1036,45 @@ export function ScheduleTournamentMatchDialog({
                 onChange={(e) => setSemi2a(e.target.value)}
                 disabled={writePending}
               >
-                {allKoOptions.map((l) => (
-                  <option key={`s2a-${l.id}`} value={l.userTeamId}>
-                    {linkLabel(l, myTeams)}
-                  </option>
-                ))}
+                {allKoOptions
+                  .filter((l) => l.userTeamId !== semi2h)
+                  .map((l) => (
+                    <option key={`s2a-${l.id}`} value={l.userTeamId}>
+                      {linkLabel(l, myTeams)}
+                    </option>
+                  ))}
               </ScheduleFieldSelect>
             </>
           )}
 
           {showKoBlocks && round === 'quarter_final' && (
             <>
-              {[1, 2, 3, 4].map((n) => (
+              {[1, 2, 3, 4].map((n) => {
+                const qfHome = n === 1 ? q1h : n === 2 ? q2h : n === 3 ? q3h : q4h
+                const qfAway = n === 1 ? q1a : n === 2 ? q2a : n === 3 ? q3a : q4a
+                return (
                 <div key={n} className="space-y-3 rounded-xl border border-slate-100 bg-white p-3 shadow-[0_1px_3px_rgba(15,23,42,0.04)]">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Quarter final {n}</p>
                   <ScheduleFieldSelect
                     id={`${fieldId}-qf-${n}-h`}
                     label="Home team"
                     placeholder="Select team"
-                    value={n === 1 ? q1h : n === 2 ? q2h : n === 3 ? q3h : q4h}
+                    value={qfHome}
                     onChange={(e) => {
                       const v = e.target.value
-                      if (n === 1) setQ1h(v)
-                      else if (n === 2) setQ2h(v)
-                      else if (n === 3) setQ3h(v)
-                      else setQ4h(v)
+                      if (n === 1) {
+                        setQ1h(v)
+                        if (v && v === q1a) setQ1a('')
+                      } else if (n === 2) {
+                        setQ2h(v)
+                        if (v && v === q2a) setQ2a('')
+                      } else if (n === 3) {
+                        setQ3h(v)
+                        if (v && v === q3a) setQ3a('')
+                      } else {
+                        setQ4h(v)
+                        if (v && v === q4a) setQ4a('')
+                      }
                     }}
                     disabled={writePending}
                   >
@@ -1007,7 +1088,7 @@ export function ScheduleTournamentMatchDialog({
                     id={`${fieldId}-qf-${n}-a`}
                     label="Away team"
                     placeholder="Select team"
-                    value={n === 1 ? q1a : n === 2 ? q2a : n === 3 ? q3a : q4a}
+                    value={qfAway}
                     onChange={(e) => {
                       const v = e.target.value
                       if (n === 1) setQ1a(v)
@@ -1017,14 +1098,17 @@ export function ScheduleTournamentMatchDialog({
                     }}
                     disabled={writePending}
                   >
-                    {allKoOptions.map((l) => (
-                      <option key={`q${n}a-${l.id}`} value={l.userTeamId}>
-                        {linkLabel(l, myTeams)}
-                      </option>
-                    ))}
+                    {allKoOptions
+                      .filter((l) => l.userTeamId !== qfHome)
+                      .map((l) => (
+                        <option key={`q${n}a-${l.id}`} value={l.userTeamId}>
+                          {linkLabel(l, myTeams)}
+                        </option>
+                      ))}
                   </ScheduleFieldSelect>
                 </div>
-              ))}
+                )
+              })}
             </>
           )}
 
@@ -1041,19 +1125,22 @@ export function ScheduleTournamentMatchDialog({
                 disabled={writePending}
               />
               <p className="text-xs leading-snug text-slate-500">For each match, select home team then away team in order.</p>
-              {Array.from({ length: koMatchCount }, (_, mi) => (
+              {Array.from({ length: koMatchCount }, (_, mi) => {
+                const koHome = koPicks[mi * 2] ?? ''
+                return (
                 <div key={mi} className="space-y-3 rounded-xl border border-slate-100 bg-white p-3 shadow-[0_1px_3px_rgba(15,23,42,0.04)]">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Match {mi + 1}</p>
                   <ScheduleFieldSelect
                     id={`${fieldId}-ko-${mi}-h`}
                     label="Home team"
                     placeholder="Select team"
-                    value={koPicks[mi * 2] ?? ''}
+                    value={koHome}
                     onChange={(e) => {
                       const v = e.target.value
                       setKoPicks((prev) => {
                         const next = [...prev]
                         next[mi * 2] = v
+                        if (next[mi * 2 + 1] === v) next[mi * 2 + 1] = ''
                         return next
                       })
                     }}
@@ -1080,14 +1167,17 @@ export function ScheduleTournamentMatchDialog({
                     }}
                     disabled={writePending}
                   >
-                    {allKoOptions.map((l) => (
-                      <option key={`ko-${mi}-a-${l.id}`} value={l.userTeamId}>
-                        {linkLabel(l, myTeams)}
-                      </option>
-                    ))}
+                    {allKoOptions
+                      .filter((l) => l.userTeamId !== koHome)
+                      .map((l) => (
+                        <option key={`ko-${mi}-a-${l.id}`} value={l.userTeamId}>
+                          {linkLabel(l, myTeams)}
+                        </option>
+                      ))}
                   </ScheduleFieldSelect>
                 </div>
-              ))}
+                )
+              })}
             </>
           )}
 

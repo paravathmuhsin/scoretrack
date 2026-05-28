@@ -1,10 +1,11 @@
-import { ChevronDown, Plus, Search, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { ChevronDown, Info, Plus, Search, X } from 'lucide-react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
 /** Match AddPlayersModal results strip height */
 const RESULTS_SCROLL_MAX_H = 'calc(1.75 * 5rem)'
+const GROUP_TEAMS_HINT = 'Search linked squads and add them — choose at least two for this pool.'
 
 export type GroupTeamPickRow = {
   id: string
@@ -45,10 +46,13 @@ export function TournamentGroupTeamsPicker({
 }: Props) {
   const [q, setQ] = useState('')
   const [selectedOpen, setSelectedOpen] = useState(true)
+  const [teamsHintOpen, setTeamsHintOpen] = useState(false)
+  const teamsHintId = useId()
 
   useEffect(() => {
     setQ('')
     setSelectedOpen(true)
+    setTeamsHintOpen(false)
   }, [resetSignal])
 
   const needle = q.trim().toLowerCase()
@@ -73,13 +77,40 @@ export function TournamentGroupTeamsPicker({
 
   return (
     <div className={cn('flex min-h-0 flex-1 flex-col gap-3 overflow-hidden', className)}>
-      <div>
-        <p id={headingId} className="text-sm font-semibold text-slate-900">
-          Add teams to this group
-        </p>
-        <p className="mt-1 text-sm leading-snug text-slate-500">
-          Search linked squads and add them — choose at least two for this pool.
-        </p>
+      <div className="min-w-0 shrink-0 leading-tight">
+        <div className="flex items-center gap-1">
+          <p id={headingId} className="text-sm font-semibold text-slate-900">
+            Add teams to this group
+          </p>
+          <button
+            type="button"
+            className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:pointer-events-none disabled:opacity-40"
+            aria-label="About adding teams to this group"
+            aria-expanded={teamsHintOpen}
+            aria-controls={teamsHintId}
+            disabled={disabled}
+            onClick={() => setTeamsHintOpen((o) => !o)}
+          >
+            <Info className="size-4" strokeWidth={2.2} aria-hidden />
+          </button>
+        </div>
+        <div
+          id={teamsHintId}
+          role="region"
+          aria-live="polite"
+          hidden={!teamsHintOpen}
+          className="relative mt-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5 pr-9 text-xs leading-relaxed text-slate-600"
+        >
+          <button
+            type="button"
+            className="absolute right-2 top-2 inline-flex size-5 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-700"
+            aria-label="Close adding teams tips"
+            onClick={() => setTeamsHintOpen(false)}
+          >
+            <X className="size-3.5" strokeWidth={2.5} aria-hidden />
+          </button>
+          {GROUP_TEAMS_HINT}
+        </div>
       </div>
 
       {teams.length === 0 ? (
@@ -114,7 +145,6 @@ export function TournamentGroupTeamsPicker({
               <X className="size-3.5" strokeWidth={2.5} />
             </button>
           </div>
-          <p className="shrink-0 text-xs text-slate-400">Filter squads linked to this tournament.</p>
 
           <div
             className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pr-1"
