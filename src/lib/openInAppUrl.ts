@@ -1,14 +1,14 @@
 import { Capacitor } from '@capacitor/core'
 import { PUBLIC_APP_DOMAIN } from './appDomain'
 
-const ANDROID_PACKAGE = 'com.scoretrack.app'
+const ANDROID_PACKAGE = 'com.scoretrackonline.app'
 
 export { ANDROID_PACKAGE }
 
 /** Set when the native app was confirmed installed (API or successful launch). */
 export const ANDROID_APP_INSTALLED_KEY = 'st-android-app-installed'
 
-/** Set after the user taps Download — show Open on return (Chrome often misses sideloaded APKs). */
+/** Set after the user opens Play Store from the install prompt — show Open on return. */
 export const ANDROID_APK_DOWNLOAD_PENDING_KEY = 'st-android-apk-download-pending'
 
 export function isMobileWebBrowser(): boolean {
@@ -64,7 +64,7 @@ function readAndroidApkDownloadPending(): boolean {
   return localStorage.getItem(ANDROID_APK_DOWNLOAD_PENDING_KEY) === '1'
 }
 
-/** Call when the user starts an APK download from the browser prompt. */
+/** Call when the user opens the Play Store from the browser install prompt. */
 export function markAndroidApkDownloadPending(): void {
   if (typeof localStorage === 'undefined') return
   localStorage.setItem(ANDROID_APK_DOWNLOAD_PENDING_KEY, '1')

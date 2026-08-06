@@ -22,7 +22,7 @@
   "related_applications": [
     {
       "platform": "play",
-      "id": "com.scoretrack.app"
+      "id": "com.scoretrackonline.app"
     }
   ],
   "prefer_related_applications": false

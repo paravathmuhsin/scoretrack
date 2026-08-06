@@ -1,5 +1,6 @@
 {
   "projects": {
-    "default": "scoretrack-48b01"
+    "default": "scoretrack-48b01",
+    "staging": "scoretrack-staging"
   }
 }

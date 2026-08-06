@@ -6,8 +6,11 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT_DIR="$ROOT/public/.well-known"
-PACKAGE="com.scoretrack.app"
+PACKAGE="com.scoretrackonline.app"
 APPLE_TEAM_ID="${APPLE_TEAM_ID:-}"
+# Optional: Play Console → Protected with Play → App signing → SHA-256
+# (Digital Asset Links JSON / App signing key certificate)
+PLAY_SHA256="${PLAY_SHA256:-E4:ED:4D:EC:71:37:21:A3:CA:D4:BF:A6:94:45:29:4F:ED:9A:C4:C6:47:2E:88:F5:7F:4F:84:19:0B:16:FE:EC}"
 
 sha256_fingerprint() {
   keytool -list -v -keystore "$1" -alias "$2" -storepass "$3" -keypass "$3" 2>/dev/null \
@@ -24,10 +27,15 @@ fi
 RELEASE_KS="$ROOT/android/app/scoretrack-release.keystore"
 PROPS="$ROOT/android/keystore.properties"
 if [[ -f "$RELEASE_KS" && -f "$PROPS" ]]; then
-  # shellcheck disable=SC1090
-  source <(grep -E '^(storePassword|keyAlias)=' "$PROPS" | sed 's/\r$//')
-  FP="$(sha256_fingerprint "$RELEASE_KS" "${keyAlias:-scoretrack}" "$storePassword" || true)"
+  storePassword="$(grep -E '^storePassword=' "$PROPS" | sed 's/^storePassword=//' | tr -d '\r')"
+  keyAlias="$(grep -E '^keyAlias=' "$PROPS" | sed 's/^keyAlias=//' | tr -d '\r')"
+  keyAlias="${keyAlias:-scoretrack}"
+  FP="$(sha256_fingerprint "$RELEASE_KS" "$keyAlias" "$storePassword" || true)"
   [[ -n "$FP" ]] && FINGERPRINTS+=("$FP")
+fi
+
+if [[ -n "$PLAY_SHA256" ]]; then
+  FINGERPRINTS+=("$PLAY_SHA256")
 fi
 
 if [[ ${#FINGERPRINTS[@]} -eq 0 ]]; then

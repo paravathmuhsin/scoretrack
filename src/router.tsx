@@ -21,6 +21,7 @@ const PublicTournamentDetailPage = lazyPage(
   () => import('./pages/PublicTournamentDetailPage'),
   'PublicTournamentDetailPage',
 )
+const PrivacyPolicyPage = lazyPage(() => import('./pages/PrivacyPolicyPage'), 'PrivacyPolicyPage')
 const LoginPage = lazyPage(() => import('./pages/LoginPage'), 'LoginPage')
 const RegisterPage = lazyPage(() => import('./pages/RegisterPage'), 'RegisterPage')
 const CompleteProfilePage = lazyPage(
@@ -32,6 +33,7 @@ const TeamJoinInvitePage = lazyPage(
   'TeamJoinInvitePage',
 )
 const ProfilePage = lazyPage(() => import('./pages/ProfilePage'), 'ProfilePage')
+const DeleteAccountPage = lazyPage(() => import('./pages/DeleteAccountPage'), 'DeleteAccountPage')
 const MyStatsPage = lazyPage(() => import('./pages/MyStatsPage'), 'MyStatsPage')
 const TeamsPage = lazyPage(() => import('./pages/TeamsPage'), 'TeamsPage')
 const UserTeamCreatePage = lazyPage(
@@ -81,6 +83,7 @@ export const router = createBrowserRouter([
       { path: 'player/:playerId', element: page(<PublicPlayerStatsPage />) },
       { path: 'tournaments', element: page(<PublicTournamentsPage />) },
       { path: 'tournaments/:id', element: page(<PublicTournamentDetailPage />) },
+      { path: 'privacy', element: page(<PrivacyPolicyPage />) },
     ],
   },
   { path: '/login', element: page(<LoginPage />) },
@@ -101,6 +104,7 @@ export const router = createBrowserRouter([
             children: [
               { index: true, element: <Navigate to="/" replace /> },
               { path: 'profile', element: page(<ProfilePage />) },
+              { path: 'delete-account', element: page(<DeleteAccountPage />) },
               { path: 'notifications', element: page(<NotificationsPage />) },
               { path: 'my-stats', element: page(<MyStatsPage />) },
               { path: 'teams', element: page(<TeamsPage />) },

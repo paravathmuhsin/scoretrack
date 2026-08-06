@@ -689,7 +689,10 @@ service cloud.firestore {
             && userTeamJoinInviteData(resource.data.joinInviteToken).ownerUid == uid
             && userTeamJoinInviteData(resource.data.joinInviteToken).teamId == teamId
             && request.resource.data.joinInviteToken == resource.data.joinInviteToken
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players'])
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players', 'memberIds'])
+            && request.resource.data.memberIds is list
+            && request.auth.uid in request.resource.data.memberIds
+            && request.resource.data.memberIds.size() == request.resource.data.players.size()
             && request.resource.data.players.size() == resource.data.players.size() + 1
             && request.resource.data.players.size() <= 40
             && request.resource.data.players[resource.data.players.size()].playerId == request.auth.uid

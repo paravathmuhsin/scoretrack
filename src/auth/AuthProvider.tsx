@@ -16,7 +16,8 @@ import { MOBILE_TEN_DIGIT_MSG, normalizeOptionalTenDigitMobile } from '../lib/ph
 import { MAX_DISPLAY_NAME_LEN, MIN_PROFILE_NAME_LEN } from '../lib/profileComplete'
 import type { UserProfileDoc } from '../types/models'
 import { AuthContext, type AuthContextValue } from './context'
-import { signInWithGoogle as runGoogleSignIn } from './googleSignIn'
+import { deleteAccount as runDeleteAccount } from './deleteAccount'
+import { signInWithGoogle as runGoogleSignIn, signOutNativeAuth } from './googleSignIn'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthContextValue['user']>(null)
@@ -237,8 +238,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await syncPlayerCareerProfileNames(getDb(), u.uid, fullName, displayName)
       },
       async logout() {
+        await signOutNativeAuth()
         await signOut(getFirebaseAuth())
         toast.success('Signed out')
+      },
+      async deleteAccount(password) {
+        await runDeleteAccount(password)
+        toast.success('Account deleted')
       },
     }),
     [user, loading],

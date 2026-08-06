@@ -25,6 +25,9 @@ export function getAuthErrorMessage(err: unknown): string {
   if (/no credentials available/i.test(message)) {
     return 'No Google account found. Add a Google account in device Settings, then try again.'
   }
+  if (err instanceof Error && /reading 'app'|Cannot read properties of undefined/i.test(err.message)) {
+    return 'Sign-in confirmation failed. Try again, or use email/password if your account supports it.'
+  }
   if (err instanceof FirebaseError) {
     switch (err.code) {
       case 'auth/invalid-credential':
@@ -44,6 +47,12 @@ export function getAuthErrorMessage(err: unknown): string {
         return 'This app is not authorized for sign-in. Contact support if this continues.'
       case 'auth/account-exists-with-different-credential':
         return 'An account already exists with this email using a different sign-in method.'
+      case 'auth/requires-recent-login':
+        return 'For security, confirm your identity again (password or Google), then retry.'
+      case 'auth/configuration-not-found':
+        return import.meta.env.MODE === 'staging'
+          ? 'Staging Firebase Auth is not set up yet. In Firebase Console → scoretrack-staging → Authentication, click Get started, then enable Email/Password and Google. Add localhost under Authorized domains.'
+          : 'Firebase Authentication is not configured for this project. In Firebase Console → Authentication, enable at least one sign-in method (Email/Password and/or Google).'
       default:
         return err.message
     }

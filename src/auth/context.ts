@@ -19,6 +19,8 @@ export type AuthContextValue = {
   /** Writes current `users/{uid}` names onto `playerCareerStats` so `/player/:uid` works when logged out. */
   syncCareerProfileMirror: () => Promise<void>
   logout: () => Promise<void>
+  /** Permanently deletes the signed-in account after re-authentication. */
+  deleteAccount: (password?: string) => Promise<void>
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null)

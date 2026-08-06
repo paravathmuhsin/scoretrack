@@ -1,4 +1,4 @@
-package com.scoretrack.app;
+package com.scoretrackonline.app;
 
 import com.getcapacitor.BridgeActivity;
 

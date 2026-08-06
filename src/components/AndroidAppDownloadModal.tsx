@@ -1,4 +1,3 @@
-import { Capacitor } from '@capacitor/core'
 import { Smartphone } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import {
@@ -14,21 +13,21 @@ import {
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import {
-  ANDROID_APK_FILE_NAME,
-  getAndroidApkDownloadUrl,
-  isAndroidApkDownloadEnabled,
+  getAndroidPlayStoreUrl,
+  isAndroidPlayStorePromptEnabled,
+  isAndroidWebBrowser,
 } from '../lib/androidApkDownload'
 import { launchAndroidApp, markAndroidApkDownloadPending } from '../lib/openInAppUrl'
 
-const DISMISS_KEY = 'st-android-apk-modal-dismissed'
+const DISMISS_KEY = 'st-android-play-modal-dismissed'
 const SHOW_DELAY_MS = 3000
 
-function shouldOfferAndroidApkDownload(): boolean {
-  if (!isAndroidApkDownloadEnabled()) return false
-  if (Capacitor.isNativePlatform()) return false
+function shouldOfferAndroidPlayStore(): boolean {
+  // Hard gate: Android browser only — never iOS, desktop, or native app.
+  if (!isAndroidWebBrowser()) return false
+  if (!isAndroidPlayStorePromptEnabled()) return false
   if (typeof window === 'undefined') return false
   if (sessionStorage.getItem(DISMISS_KEY) === '1') return false
-  if (!/Android/i.test(navigator.userAgent)) return false
   if (window.location.pathname.startsWith('/overlay/')) return false
   return true
 }
@@ -39,18 +38,23 @@ function delay(ms: number): Promise<void> {
   })
 }
 
-/** Prompts Android browser visitors to install the app after a short delay. */
+/** Prompts Android browser visitors to install from Google Play after a short delay. */
 export function AndroidAppDownloadModal() {
+  const [eligible, setEligible] = useState(false)
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
-    if (!shouldOfferAndroidApkDownload()) return
+    if (!shouldOfferAndroidPlayStore()) {
+      setEligible(false)
+      return
+    }
 
+    setEligible(true)
     let cancelled = false
 
     void (async () => {
       await delay(SHOW_DELAY_MS)
-      if (cancelled || !shouldOfferAndroidApkDownload()) return
+      if (cancelled || !shouldOfferAndroidPlayStore()) return
       setOpen(true)
     })()
 
@@ -68,6 +72,8 @@ export function AndroidAppDownloadModal() {
     launchAndroidApp(window.location.href)
     dismiss()
   }
+
+  if (!eligible) return null
 
   const actionButtonClassName =
     'min-h-[50px] h-12 w-full rounded-xl text-base font-semibold'
@@ -88,17 +94,17 @@ export function AndroidAppDownloadModal() {
           <AlertDialogMedia className="bg-primary/10 text-primary">
             <Smartphone className="size-5" aria-hidden />
           </AlertDialogMedia>
-          <AlertDialogTitle>Get the ScoreTrack app</AlertDialogTitle>
+          <AlertDialogTitle>Get ScoreTrack on Google Play</AlertDialogTitle>
           <AlertDialogDescription>
-            Install the Android app for faster access, live scoring, and a better experience than the
-            browser.
+            Available for Android phones only. Install from Google Play for faster access, live
+            scoring, and a better experience than the browser.
           </AlertDialogDescription>
           <button
             type="button"
             className="mt-1 text-left text-sm font-medium text-primary hover:underline"
             onClick={openApp}
           >
-            Already installed? Open app
+            Already installed? Open Android app
           </button>
         </AlertDialogHeader>
         <AlertDialogFooter className="!flex-col gap-2 sm:!flex-col sm:!justify-stretch">
@@ -107,15 +113,14 @@ export function AndroidAppDownloadModal() {
             className={primaryButtonClassName}
             render={
               <a
-                href={getAndroidApkDownloadUrl()}
-                download={ANDROID_APK_FILE_NAME}
+                href={getAndroidPlayStoreUrl()}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => markAndroidApkDownloadPending()}
               />
             }
           >
-            Download app
+            Download now
           </Button>
           <AlertDialogCancel type="button" className={actionButtonClassName} onClick={dismiss}>
             Not now

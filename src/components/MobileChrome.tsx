@@ -4,6 +4,7 @@ import {
   CalendarDays,
   LogOut,
   Menu,
+  Trash2,
   Trophy,
   User,
   Users,
@@ -164,6 +165,25 @@ function MobileAccountDrawer({
                   </span>
                 ) : null}
               </span>
+            </Link>
+          </nav>
+
+          <Separator className="bg-slate-200" />
+
+          <nav className="flex flex-col gap-0.5 py-2" aria-label="Account settings">
+            <Link
+              to="/app/delete-account"
+              className={cn(
+                navBase,
+                pathname.startsWith('/app/delete-account')
+                  ? 'bg-destructive/10 font-semibold !text-destructive ring-1 ring-destructive/20 hover:!text-destructive visited:!text-destructive hover:bg-destructive/15'
+                  : '!text-destructive hover:!text-destructive visited:!text-destructive hover:bg-destructive/5',
+              )}
+              aria-current={pathname.startsWith('/app/delete-account') ? 'page' : undefined}
+              onClick={close}
+            >
+              <Trash2 className="size-5 shrink-0" strokeWidth={2.2} aria-hidden />
+              Delete account
             </Link>
           </nav>
 

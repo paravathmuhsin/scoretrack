@@ -2,6 +2,8 @@ import { FirebaseAuthentication } from '@capacitor-firebase/authentication'
 import { Capacitor } from '@capacitor/core'
 import {
   GoogleAuthProvider,
+  reauthenticateWithPopup,
+  reauthenticateWithCredential,
   signInWithCredential,
   signInWithPopup,
   type Auth,
@@ -16,12 +18,20 @@ function isCredentialManagerSignInError(err: unknown): boolean {
   return /no credentials available|credential manager|GetCredentialException|no credential/i.test(msg)
 }
 
-async function signInWithGoogleNative() {
-  // Clear cached Google session so a previous account is not reused silently.
-  await FirebaseAuthentication.signOut().catch(() => {})
+const nativeGoogleOptions = {
+  /** Match capacitor.config — JS SDK owns the Firebase Auth session. */
+  skipNativeAuth: true,
+} as const
+
+async function signInWithGoogleNative(options?: { clearSession?: boolean }) {
+  if (options?.clearSession !== false) {
+    // Clear cached Google session so a previous account is not reused silently.
+    await FirebaseAuthentication.signOut().catch(() => {})
+  }
 
   try {
     return await FirebaseAuthentication.signInWithGoogle({
+      ...nativeGoogleOptions,
       // Credential Manager shows the account chooser (all device accounts).
       useCredentialManager: true,
     })
@@ -29,6 +39,7 @@ async function signInWithGoogleNative() {
     if (!isCredentialManagerSignInError(err)) throw err
     // Fallback for emulators / devices where Credential Manager is unavailable.
     return await FirebaseAuthentication.signInWithGoogle({
+      ...nativeGoogleOptions,
       useCredentialManager: false,
     })
   }
@@ -41,6 +52,12 @@ export function usesNativeGoogleSignIn(): boolean {
 
 /** @deprecated Use usesNativeGoogleSignIn */
 export const usesNativeGoogleRedirect = usesNativeGoogleSignIn
+
+/** Clear native Google / plugin session (no-op on web). */
+export async function signOutNativeAuth(): Promise<void> {
+  if (!usesNativeGoogleSignIn()) return
+  await FirebaseAuthentication.signOut().catch(() => {})
+}
 
 /** Web-only redirect completion; native uses signInWithCredential instead. */
 export async function completeGoogleRedirectIfNeeded(_auth: Auth): Promise<UserCredential | null> {
@@ -56,4 +73,20 @@ export async function signInWithGoogle(auth: Auth): Promise<UserCredential | nul
     return signInWithCredential(auth, credential)
   }
   return signInWithPopup(auth, googleProvider)
+}
+
+/** Re-authenticate the current user before sensitive actions (e.g. account deletion). */
+export async function reauthenticateWithGoogle(auth: Auth): Promise<void> {
+  const user = auth.currentUser
+  if (!user) throw new Error('Not signed in')
+
+  if (usesNativeGoogleSignIn()) {
+    const result = await signInWithGoogleNative({ clearSession: false })
+    const idToken = result.credential?.idToken
+    if (!idToken) throw new Error('Google confirmation was cancelled.')
+    await reauthenticateWithCredential(user, GoogleAuthProvider.credential(idToken))
+    return
+  }
+
+  await reauthenticateWithPopup(user, googleProvider)
 }

@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/android/app/google-services.json"
 PROJECT_ID="${FIREBASE_PROJECT_ID:-scoretrack-48b01}"
-PACKAGE_NAME="${ANDROID_PACKAGE_NAME:-com.scoretrack.app}"
+PACKAGE_NAME="${ANDROID_PACKAGE_NAME:-com.scoretrackonline.app}"
 
 echo "Firebase project: $PROJECT_ID"
 echo "Android package:  $PACKAGE_NAME"

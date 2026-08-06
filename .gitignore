@@ -12,7 +12,18 @@ dist
 dist-ssr
 *.local
 .env
+.env.staging
 firebase-debug.log
+
+# Yarn Berry (cache/state only — commit yarn.lock)
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+.pnp.*
+.yarn/install-state.gz
 
 # Editor directories and files
 .vscode/*

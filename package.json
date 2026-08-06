@@ -1,7 +1,7 @@
 {
   "name": "scoretrack",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.2.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,6 +10,11 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "dev:staging": "vite --mode staging",
+    "build:staging": "tsc -b && vite build --mode staging",
+    "firebase:deploy:staging": "npm run build:staging && firebase deploy --project staging",
+    "firebase:deploy:staging:hosting": "npm run build:staging && firebase deploy --only hosting --project staging",
+    "firebase:deploy:staging:rules": "firebase deploy --only firestore:rules,firestore:indexes --project staging",
     "emulators": "firebase emulators:start --only auth,firestore,hosting",
     "firebase:login": "firebase login",
     "firebase:deploy": "npm run build && firebase deploy",
@@ -27,8 +32,9 @@
     "cap:well-known": "bash scripts/generate-well-known.sh",
     "cap:build:android": "npm run cap:sync && cd android && ./gradlew assembleDebug",
     "cap:build:android:release": "npm run cap:android:keystore && npm run cap:sync && cd android && ./gradlew assembleRelease",
-    "cap:release:android": "bash scripts/android-release.sh patch",
-    "cap:release:android:minor": "bash scripts/android-release.sh minor",
+    "cap:bundle:android:release": "npm run cap:android:keystore && npm run cap:sync && cd android && ./gradlew bundleRelease",
+    "cap:bump:android": "node scripts/bump-app-version.mjs patch",
+    "cap:bump:android:minor": "node scripts/bump-app-version.mjs minor",
     "cap:build:ios": "npm run cap:sync:ios && npx cap open ios"
   },
   "dependencies": {

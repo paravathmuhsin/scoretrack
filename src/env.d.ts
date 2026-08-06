@@ -1,6 +1,9 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
+  /** Google Play listing URL. Empty string hides the Android install prompt. */
+  readonly VITE_ANDROID_PLAY_STORE_URL?: string
+  /** @deprecated Use VITE_ANDROID_PLAY_STORE_URL. Empty string still hides the prompt. */
   readonly VITE_ANDROID_APK_URL?: string
   readonly VITE_PUBLIC_APP_URL?: string
   readonly VITE_FIREBASE_API_KEY?: string

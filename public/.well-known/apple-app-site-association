@@ -3,7 +3,7 @@
     "apps": [],
     "details": [
       {
-        "appID": "REPLACE_WITH_APPLE_TEAM_ID.com.scoretrack.app",
+        "appID": "REPLACE_WITH_APPLE_TEAM_ID.com.scoretrackonline.app",
         "paths": [
           "/live/*",
           "/overlay/*",
