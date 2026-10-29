@@ -1,5 +1,6 @@
-import { ChevronDown, Info, Plus, Search, UserPlus, X } from 'lucide-react'
-import { useCallback, useEffect, useId, useMemo, useState } from 'react'
+import { Info, Plus, Search, X } from 'lucide-react'
+import { ModalDialogHeader } from '@/components/ModalDialogHeader'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { RosterPlayer } from '../types/models'
 import { canSearchDirectory, searchDirectoryUsers, type DirectoryHit } from '../lib/directorySearch'
 import { Button } from '@/components/ui/button'
@@ -9,8 +10,16 @@ import { tournamentModalFooterSinglePrimaryButtonClass } from './tournament/tour
 
 const SEARCH_LIMIT = 10
 const DIRECTORY_SEARCH_HINT = `Min. 2 letters (name/email) or 4 digits (mobile). Showing up to ${SEARCH_LIMIT} matches.`
-/** Max visible results height (~1.75 rows), then scroll. */
-const RESULTS_SCROLL_MAX_H = 'calc(1.75 * 3.25rem)'
+/** Max visible results height (~4 compact rows), then scroll. */
+const RESULTS_SCROLL_MAX_H = 'calc(4 * 2.5rem + 1.125rem)'
+const STAGED_SCROLL_MAX_H = '9rem'
+
+function scrollNeedsBottomFade(el: HTMLElement | null): boolean {
+  if (!el) return false
+  const canScroll = el.scrollHeight > el.clientHeight + 2
+  const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2
+  return canScroll && !atBottom
+}
 
 type Props = {
   open: boolean
@@ -38,9 +47,20 @@ export function AddPlayersModal({ open, onClose, roster, onAddPlayers, maxRoster
   const [hits, setHits] = useState<DirectoryHit[]>([])
   const [error, setError] = useState<string | null>(null)
   const [staged, setStaged] = useState<RosterPlayer[]>([])
-  const [selectedOpen, setSelectedOpen] = useState(false)
   const [searchHintOpen, setSearchHintOpen] = useState(false)
+  const [resultsScrollFade, setResultsScrollFade] = useState(false)
+  const [stagedScrollFade, setStagedScrollFade] = useState(false)
+  const resultsScrollRef = useRef<HTMLDivElement>(null)
+  const stagedScrollRef = useRef<HTMLDivElement | null>(null)
   const searchHintId = useId()
+
+  const updateResultsScrollFade = useCallback(() => {
+    setResultsScrollFade(scrollNeedsBottomFade(resultsScrollRef.current))
+  }, [])
+
+  const updateStagedScrollFade = useCallback(() => {
+    setStagedScrollFade(scrollNeedsBottomFade(stagedScrollRef.current))
+  }, [])
 
   const rosterIds = useMemo(() => new Set(roster.map((p) => p.playerId)), [roster])
   const stagedIds = useMemo(() => new Set(staged.map((p) => p.playerId)), [staged])
@@ -84,13 +104,20 @@ export function AddPlayersModal({ open, onClose, roster, onAddPlayers, maxRoster
   }, [debounced, open])
 
   useEffect(() => {
+    updateResultsScrollFade()
+  }, [hits, loading, debounced, updateResultsScrollFade])
+
+  useEffect(() => {
+    updateStagedScrollFade()
+  }, [staged, updateStagedScrollFade])
+
+  useEffect(() => {
     if (!open) {
       setQ('')
       setDebounced('')
       setHits([])
       setError(null)
       setStaged([])
-      setSelectedOpen(false)
       setSearchHintOpen(false)
     }
   }, [open])
@@ -139,40 +166,20 @@ export function AddPlayersModal({ open, onClose, roster, onAddPlayers, maxRoster
         aria-labelledby="add-players-title"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="relative border-b border-slate-100 px-5 pb-4 pt-5">
-          <button
-            type="button"
-            className="absolute top-4 right-4 inline-flex size-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
-            aria-label="Close"
-            onClick={onClose}
-          >
-            <X className="size-4" strokeWidth={2.2} />
-          </button>
-          <div className="flex items-start gap-3 pr-10">
-            <div
-              className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
-              aria-hidden
-            >
-              <UserPlus className="size-5" strokeWidth={2} />
-            </div>
-            <div className="min-w-0 leading-tight">
-              <h2 id="add-players-title" className="text-lg font-bold text-slate-900">
-                Add player from directory
-              </h2>
-              <p className="mt-1 text-sm text-slate-500">Search and add registered ScoreTrack users</p>
-              {maxRosterSize !== undefined && (
-                <p className="mt-2 text-sm font-semibold text-primary">
-                  Roster {roster.length}/{maxRosterSize}
-                  {extraSlots === 0
-                    ? ' — full'
-                    : ` — ${extraSlots} slot${extraSlots === 1 ? '' : 's'} left`}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
+        <ModalDialogHeader
+          titleId="add-players-title"
+          title="Add player from directory"
+          onClose={onClose}
+        />
 
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden px-5 py-4">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden px-5 py-4">
+          {maxRosterSize !== undefined && (
+            <p className="shrink-0 text-sm font-semibold text-primary">
+              Roster {roster.length}/{maxRosterSize}
+              {extraSlots === 0 ? ' — full' : ` — ${extraSlots} slot${extraSlots === 1 ? '' : 's'} left`}
+            </p>
+          )}
           <div className="shrink-0 space-y-2">
             <div className="flex items-center gap-2">
               <div
@@ -245,9 +252,15 @@ export function AddPlayersModal({ open, onClose, roster, onAddPlayers, maxRoster
           )}
 
           <div
-            className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pr-1"
-            style={hits.length > 0 ? { maxHeight: RESULTS_SCROLL_MAX_H } : undefined}
+            className="relative min-h-0 shrink-0 overflow-hidden"
+            style={hits.length > 0 ? ({ maxHeight: RESULTS_SCROLL_MAX_H } satisfies CSSProperties) : undefined}
           >
+            <div
+              ref={resultsScrollRef}
+              className="h-full space-y-1.5 overflow-y-auto overscroll-contain pr-1"
+              style={hits.length > 0 ? ({ maxHeight: RESULTS_SCROLL_MAX_H } satisfies CSSProperties) : undefined}
+              onScroll={updateResultsScrollFade}
+            >
             {loading && <p className="py-6 text-center text-sm text-slate-500">Searching…</p>}
             {!loading && !canSearchDirectory(debounced) && (
               <p className="py-4 text-center text-sm text-slate-500">
@@ -265,24 +278,26 @@ export function AddPlayersModal({ open, onClose, roster, onAddPlayers, maxRoster
                 return (
                   <div
                     key={h.uid}
-                    className="flex items-center gap-2 rounded-xl border border-slate-100 bg-white px-3 py-2.5 shadow-sm"
+                    className="flex items-center gap-1.5 rounded-md border border-slate-100 bg-white px-2.5 py-1 shadow-sm"
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm text-slate-900">
+                      <p className="truncate text-xs leading-tight text-slate-900">
                         <span className="font-semibold">{h.displayName}</span>
                         {h.email ? (
                           <span className="font-normal text-slate-500"> ({h.email})</span>
                         ) : null}
                       </p>
                       {addBlocked ? (
-                        <p className="mt-0.5 text-xs font-medium text-amber-700">Roster limit reached</p>
+                        <p className="mt-0.5 text-[11px] font-medium leading-tight text-amber-700">
+                          Roster limit reached
+                        </p>
                       ) : null}
                     </div>
                     <button
                       type="button"
                       disabled={inRoster || inStaged || addBlocked}
                       className={cn(
-                        'flex size-9 shrink-0 items-center justify-center rounded-lg border-2 transition-colors',
+                        'flex size-7 shrink-0 items-center justify-center rounded-md border-2 transition-colors',
                         inRoster || inStaged || addBlocked
                           ? 'cursor-not-allowed border-slate-200 text-slate-300'
                           : 'border-primary text-primary hover:bg-primary/5',
@@ -298,52 +313,62 @@ export function AddPlayersModal({ open, onClose, roster, onAddPlayers, maxRoster
                       }
                       onClick={() => addToStaged(h)}
                     >
-                      <Plus className="size-4" strokeWidth={2.5} />
+                      <Plus className="size-3.5" strokeWidth={2.5} />
                     </button>
                   </div>
                 )
               })}
-          </div>
-
-          <div className="shrink-0 -mx-5 w-auto min-w-0 border-y border-slate-200 bg-slate-50/50">
-            <button
-              type="button"
-              className="flex w-full min-w-0 items-center justify-between gap-2 px-5 py-3 text-left"
-              aria-expanded={selectedOpen}
-              onClick={() => setSelectedOpen((o) => !o)}
-            >
-              <span className="min-w-0 text-sm font-bold text-slate-900">
-                Selected players ({staged.length})
-              </span>
-              <ChevronDown
-                className={cn('size-4 shrink-0 text-slate-500 transition-transform', selectedOpen && 'rotate-180')}
+            </div>
+            {resultsScrollFade ? (
+              <div
+                className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white via-white/85 to-transparent"
                 aria-hidden
               />
-            </button>
-            {selectedOpen && (
-              <div className="border-t border-slate-200 px-5 pb-3 pt-1">
-                {staged.length === 0 ? (
-                  <p className="py-3 text-center text-sm text-slate-500">Players you add will appear here.</p>
-                ) : (
-                  <ul className="max-h-36 space-y-2 overflow-y-auto">
+            ) : null}
+          </div>
+          </div>
+
+          <div className="relative z-10 shrink-0 border-t border-slate-200 bg-slate-50 px-5 py-3">
+            <h3 className="text-sm font-bold text-slate-900">Selected players ({staged.length})</h3>
+            {staged.length === 0 ? (
+              <p className="mt-2 text-sm text-slate-500">Players you add will appear here.</p>
+            ) : (
+              <div
+                className="relative mt-2 overflow-hidden"
+                style={{ maxHeight: STAGED_SCROLL_MAX_H }}
+              >
+                <div
+                  ref={stagedScrollRef}
+                  className="overflow-y-auto overscroll-contain pr-1"
+                  style={{ maxHeight: STAGED_SCROLL_MAX_H }}
+                  onScroll={updateStagedScrollFade}
+                >
+                  <ul className="flex flex-wrap gap-1.5 pb-3">
                     {staged.map((p) => (
-                      <li
-                        key={p.playerId}
-                        className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-white px-2 py-2"
-                      >
-                        <span className="min-w-0 truncate text-sm font-medium text-slate-900">{p.name}</span>
-                        <button
-                          type="button"
-                          className="shrink-0 rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                          aria-label={`Remove ${p.name}`}
-                          onClick={() => removeStaged(p.playerId)}
-                        >
-                          <X className="size-4" strokeWidth={2} />
-                        </button>
+                      <li key={p.playerId} className="w-fit max-w-full">
+                        <div className="flex w-fit max-w-full items-center gap-1.5 rounded-md border border-slate-100 bg-white px-2 py-0.5 shadow-sm">
+                          <span className="max-w-[min(100%,18rem)] text-xs font-medium leading-tight text-slate-900 line-clamp-1">
+                            {p.name}
+                          </span>
+                          <button
+                            type="button"
+                            className="inline-flex size-6 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                            aria-label={`Remove ${p.name}`}
+                            onClick={() => removeStaged(p.playerId)}
+                          >
+                            <X className="size-3.5" strokeWidth={2.25} aria-hidden />
+                          </button>
+                        </div>
                       </li>
                     ))}
                   </ul>
-                )}
+                </div>
+                {stagedScrollFade ? (
+                  <div
+                    className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-slate-50 via-slate-50/75 to-transparent"
+                    aria-hidden
+                  />
+                ) : null}
               </div>
             )}
           </div>

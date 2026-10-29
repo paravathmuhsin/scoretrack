@@ -1,4 +1,5 @@
-import { ChevronRight, Plus, Search, Users, X } from 'lucide-react'
+import { ChevronRight, Search, Users } from 'lucide-react'
+import { ModalDialogHeader } from '@/components/ModalDialogHeader'
 import type { RefObject } from 'react'
 import { Link } from 'react-router-dom'
 import type { SelectableParentSquad } from '../hooks/useSelectableParentSquads'
@@ -40,19 +41,10 @@ export function InternalSquadPickerDialogContent({
     <div className="border-t border-slate-100 px-5 py-4">
       <Link
         to="/app/teams/new"
-        className="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-3 transition-colors hover:bg-slate-100/80"
+        className="text-sm font-semibold text-primary underline-offset-2 hover:underline"
         onClick={onClose}
       >
-        <span
-          className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"
-          aria-hidden
-        >
-          <Plus className="size-6" strokeWidth={2.5} />
-        </span>
-        <span className="min-w-0">
-          <span className="block font-bold text-slate-900">Can&apos;t find your team?</span>
-          <span className="mt-0.5 block text-sm text-slate-500">Add a new team to continue</span>
-        </span>
+        Can&apos;t find your team?
       </Link>
     </div>
   )
@@ -75,30 +67,7 @@ export function InternalSquadPickerDialogContent({
 
   return (
     <div className="flex max-h-[min(90dvh,640px)] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl outline-none">
-      <div className="relative border-b border-slate-100 px-5 pb-4 pt-5">
-        <button
-          type="button"
-          className="absolute top-4 right-4 inline-flex size-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
-          aria-label="Close"
-          onClick={onClose}
-        >
-          <X className="size-4" strokeWidth={2.2} aria-hidden />
-        </button>
-        <div className="flex items-start gap-3 pr-10">
-          <div
-            className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
-            aria-hidden
-          >
-            <Users className="size-5" strokeWidth={2} />
-          </div>
-          <div className="min-w-0 leading-tight">
-            <h2 id={titleId} className="text-lg font-bold tracking-tight text-slate-900">
-              Choose team
-            </h2>
-            <p className="mt-1 text-sm text-slate-500">Team you own or play for.</p>
-          </div>
-        </div>
-      </div>
+      <ModalDialogHeader titleId={titleId} title="Choose team" onClose={onClose} />
 
       {loading && squads.length === 0 ? (
         <p className="px-5 py-8 text-center text-sm text-slate-500">Loading squads…</p>

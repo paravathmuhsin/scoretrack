@@ -1,4 +1,5 @@
-import { ChevronDown, Trophy, X } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
+import { ModalDialogHeader } from '@/components/ModalDialogHeader'
 import { useEffect, useId, type ComponentProps, type FormEvent, type ReactNode } from 'react'
 import { BtnPendingLabel } from '../Spinner'
 import { matchFormSelectClass } from '../MatchFormCreateFields'
@@ -112,33 +113,12 @@ export function EndTournamentDialog({
         aria-labelledby={`${fieldId}-end-tournament-title`}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="relative shrink-0 border-b border-slate-100 px-5 pb-4 pt-5">
-          <button
-            type="button"
-            className="absolute right-4 top-4 inline-flex size-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
-            aria-label="Close"
-            onClick={() => onClose()}
-          >
-            <X className="size-4" strokeWidth={2.2} aria-hidden />
-          </button>
-          <div className="flex items-start gap-3 pr-10">
-            <div
-              className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
-              aria-hidden
-            >
-              <Trophy className="size-5" strokeWidth={2} />
-            </div>
-            <div className="min-w-0 leading-tight">
-              <h2 id={`${fieldId}-end-tournament-title`} className="text-lg font-bold text-slate-900">
-                End tournament
-              </h2>
-              <p className="mt-1 text-sm text-slate-600">
-                Confirm final standings for <span className="font-semibold text-slate-800">{tournamentName}</span>.
-                Player of the tournament defaults to the MVP leader (you can change it).
-              </p>
-            </div>
-          </div>
-        </div>
+        <ModalDialogHeader
+          shrink
+          titleId={`${fieldId}-end-tournament-title`}
+          title="End tournament"
+          onClose={() => onClose()}
+        />
 
         <form noValidate onSubmit={(e) => void handleSubmit(e)} className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">

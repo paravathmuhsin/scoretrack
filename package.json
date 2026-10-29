@@ -15,6 +15,7 @@
     "firebase:deploy:staging": "npm run build:staging && firebase deploy --project staging",
     "firebase:deploy:staging:hosting": "npm run build:staging && firebase deploy --only hosting --project staging",
     "firebase:deploy:staging:rules": "firebase deploy --only firestore:rules,firestore:indexes --project staging",
+    "seed:staging:test-users": "node scripts/seed-staging-test-users.mjs --confirm-staging",
     "emulators": "firebase emulators:start --only auth,firestore,hosting",
     "firebase:login": "firebase login",
     "firebase:deploy": "npm run build && firebase deploy",
@@ -35,7 +36,9 @@
     "cap:bundle:android:release": "npm run cap:android:keystore && npm run cap:sync && cd android && ./gradlew bundleRelease",
     "cap:bump:android": "node scripts/bump-app-version.mjs patch",
     "cap:bump:android:minor": "node scripts/bump-app-version.mjs minor",
-    "cap:build:ios": "npm run cap:sync:ios && npx cap open ios"
+    "cap:build:ios": "npm run cap:sync:ios && npx cap open ios",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
@@ -67,6 +70,9 @@
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
     "@eslint/js": "^10.0.1",
+    "@storybook/addon-a11y": "^10.6.5",
+    "@storybook/addon-docs": "^10.6.5",
+    "@storybook/react-vite": "^10.6.5",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^24.12.2",
@@ -80,7 +86,9 @@
     "firebase-tools": "^15.16.0",
     "globals": "^17.5.0",
     "jsdom": "^29.1.1",
+    "semver": "^7.8.5",
     "shadcn": "^4.6.0",
+    "storybook": "^10.6.5",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.58.2",
     "vite": "^8.0.10",

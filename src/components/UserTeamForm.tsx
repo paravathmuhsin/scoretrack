@@ -22,13 +22,13 @@ export type UserTeamFormPayload = {
   ownerIds: string[]
 }
 
-/** Team abbreviation: letters only, max length, no spaces (enforced in UI + on submit). */
+/** Team abbreviation: letters and digits, max length, no spaces (enforced in UI + on submit). */
 const TEAM_SHORT_CODE_MAX = 3
 
 function normalizeTeamShortCode(raw: string): string {
   return raw
     .replace(/\s/g, '')
-    .replace(/[^a-zA-Z]/g, '')
+    .replace(/[^a-zA-Z0-9]/g, '')
     .slice(0, TEAM_SHORT_CODE_MAX)
     .toUpperCase()
 }
@@ -142,7 +142,7 @@ export function UserTeamForm({
     }
     const sn = normalizeTeamShortCode(shortName)
     if (!sn) {
-      setError('Short code is required (1–3 letters, no spaces).')
+      setError('Short code is required (1–3 letters or numbers, no spaces).')
       return
     }
     const normalizedLocation = location.trim()
@@ -238,14 +238,14 @@ export function UserTeamForm({
                 maxLength={TEAM_SHORT_CODE_MAX}
                 autoComplete="off"
                 inputMode="text"
-                pattern="[A-Za-z]{1,3}"
-                placeholder="e.g. CSK"
-                aria-label="Short code, 1 to 3 letters, no spaces (required)"
+                pattern="[A-Za-z0-9]{1,3}"
+                placeholder="e.g. CSK or 11A"
+                aria-label="Short code, 1 to 3 letters or numbers, no spaces (required)"
                 className="h-9 flex-1 border-0 bg-transparent px-0 py-0 text-slate-900 shadow-none placeholder:text-placeholder-foreground focus-visible:ring-0 md:text-sm"
               />
             </IconField>
             <p className="pl-1 text-xs text-slate-500">
-              Up to {TEAM_SHORT_CODE_MAX} letters only — no spaces or numbers.
+              Up to {TEAM_SHORT_CODE_MAX} letters or numbers — no spaces.
             </p>
             <IconField icon={MapPin} iconClassName="text-slate-500">
               <Input

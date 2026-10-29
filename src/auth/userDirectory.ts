@@ -11,12 +11,16 @@ export function directoryFieldsForUser(u: User, profile: Partial<UserProfileDoc>
     u.displayName ||
     u.email ||
     'Player'
+  const fullName = profile?.fullName?.trim() ?? ''
   const email = u.email ?? null
   const mobileDigits = normalizePhoneDigits(profile?.mobile ?? '')
 
   return {
     displayName,
     displayNameLower: displayName.toLowerCase(),
+    ...(fullName
+      ? { fullName, fullNameLower: fullName.toLowerCase() }
+      : { fullName: null, fullNameLower: null }),
     email,
     emailLower: email ? email.toLowerCase() : null,
     phoneDigits: mobileDigits.length > 0 ? mobileDigits : null,

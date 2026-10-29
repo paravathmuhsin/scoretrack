@@ -49,10 +49,14 @@ export function getAuthErrorMessage(err: unknown): string {
         return 'An account already exists with this email using a different sign-in method.'
       case 'auth/requires-recent-login':
         return 'For security, confirm your identity again (password or Google), then retry.'
-      case 'auth/configuration-not-found':
-        return import.meta.env.MODE === 'staging'
-          ? 'Staging Firebase Auth is not set up yet. In Firebase Console → scoretrack-staging → Authentication, click Get started, then enable Email/Password and Google. Add localhost under Authorized domains.'
+      case 'auth/configuration-not-found': {
+        const stagingProject =
+          import.meta.env.MODE === 'staging' ||
+          import.meta.env.VITE_FIREBASE_PROJECT_ID === 'scoretrack-staging'
+        return stagingProject
+          ? 'Staging Firebase Auth is not set up yet. Open Firebase Console → scoretrack-staging → Authentication, click Get started, enable Email/Password and Google, and add localhost under Authorized domains.'
           : 'Firebase Authentication is not configured for this project. In Firebase Console → Authentication, enable at least one sign-in method (Email/Password and/or Google).'
+      }
       default:
         return err.message
     }

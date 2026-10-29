@@ -1,4 +1,5 @@
-import { Search, X } from 'lucide-react'
+import { Search } from 'lucide-react'
+import { ModalDialogHeader } from '@/components/ModalDialogHeader'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { canSearchDirectory, searchDirectoryUsers, type DirectoryHit } from '../lib/directorySearch'
 import { Button } from '@/components/ui/button'
@@ -70,23 +71,13 @@ export function TransferOwnershipDialogContent({
 
   return (
     <div className="flex max-h-[min(90dvh,560px)] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl">
-      <div className="relative border-b border-slate-100 px-5 pb-4 pt-5">
-        <button
-          type="button"
-          className="absolute top-4 right-4 inline-flex size-8 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100"
-          aria-label="Close"
-          onClick={onClose}
-        >
-          <X className="size-4" strokeWidth={2.2} />
-        </button>
-        <h2 className="pr-10 text-lg font-bold text-slate-900">Transfer ownership</h2>
-        <p className="mt-1 text-sm text-slate-500">
+      <ModalDialogHeader title="Transfer ownership" onClose={onClose} />
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+        <p className="mb-4 text-sm text-slate-500">
           Choose who should own <span className="font-semibold text-slate-700">{teamName}</span>. They must accept in
           Notifications.
         </p>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
         <div
           className={cn(
             'flex h-11 items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 shadow-sm transition-shadow',

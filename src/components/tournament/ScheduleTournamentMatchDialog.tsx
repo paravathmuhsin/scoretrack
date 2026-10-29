@@ -1,5 +1,6 @@
 import { collection, onSnapshot } from 'firebase/firestore'
-import { CalendarDays, ChevronDown, Info, LayoutGrid, SlidersHorizontal, X } from 'lucide-react'
+import { ChevronDown, Info, LayoutGrid, SlidersHorizontal, X } from 'lucide-react'
+import { ModalDialogHeader } from '@/components/ModalDialogHeader'
 import {
   useEffect,
   useId,
@@ -634,22 +635,10 @@ export function ScheduleTournamentMatchDialog({
         aria-labelledby="schedule-match-title"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="relative shrink-0 border-b border-slate-100 px-5 pb-4 pt-5">
-          <button
-            type="button"
-            className="absolute right-4 top-4 inline-flex size-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
-            aria-label="Close"
-            onClick={() => close()}
-          >
-            <X className="size-4" strokeWidth={2.2} />
-          </button>
-          <div className="flex items-start gap-3 pr-10">
-            <div
-              className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
-              aria-hidden
-            >
-              <CalendarDays className="size-5" strokeWidth={2} />
-            </div>
+        <ModalDialogHeader
+          shrink
+          onClose={() => close()}
+          title={
             <div className="min-w-0 leading-tight">
               <div className="flex items-center gap-1">
                 <h2 id="schedule-match-title" className="text-lg font-bold text-slate-900">
@@ -691,8 +680,8 @@ export function ScheduleTournamentMatchDialog({
                 <strong className="font-semibold text-slate-800">Edit tournament details</strong> on Overview.
               </div>
             </div>
-          </div>
-        </div>
+          }
+        />
 
         <form noValidate onSubmit={(e) => void handleSubmit(e)} className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-4">

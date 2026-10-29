@@ -1,4 +1,5 @@
-import { Info, Loader2, Plus, Search, Users, X } from 'lucide-react'
+import { Info, Loader2, Plus, Search } from 'lucide-react'
+import { ModalDialogHeader } from '@/components/ModalDialogHeader'
 import { type RefObject, useId, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { SelectableUserTeam } from '../../hooks/useSelectableUserTeams'
@@ -52,12 +53,6 @@ export function TournamentAddSquadDialogContent({
   const [searchHintOpen, setSearchHintOpen] = useState(false)
   const searchHintId = useId()
 
-  const subtitle =
-    teamSlotsRemaining != null
-      ? teamSlotsRemaining === 0
-        ? 'This tournament has no open squad slots.'
-        : `Tap squads to add them (${teamSlotsRemaining} slot${teamSlotsRemaining === 1 ? '' : 's'} left).`
-      : 'Tap squads to add them. You can add several without closing this dialog.'
   const createSquadFooter = (
     <div className="border-t border-slate-100 px-5 py-4">
       <Link
@@ -105,30 +100,7 @@ export function TournamentAddSquadDialogContent({
 
   return (
     <div className="flex max-h-[min(90dvh,640px)] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl outline-none">
-      <div className="relative border-b border-slate-100 px-5 pb-4 pt-5">
-        <button
-          type="button"
-          className="absolute top-4 right-4 inline-flex size-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
-          aria-label="Close"
-          onClick={onClose}
-        >
-          <X className="size-4" strokeWidth={2.2} aria-hidden />
-        </button>
-        <div className="flex items-start gap-3 pr-10">
-          <div
-            className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
-            aria-hidden
-          >
-            <Users className="size-5" strokeWidth={2} />
-          </div>
-          <div className="min-w-0 leading-tight">
-            <h2 id={titleId} className="text-lg font-bold tracking-tight text-slate-900">
-              Add squad to tournament
-            </h2>
-            <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
-          </div>
-        </div>
-      </div>
+      <ModalDialogHeader titleId={titleId} title="Add squad to tournament" onClose={onClose} />
 
       {!hasAnySquads ? (
         <>

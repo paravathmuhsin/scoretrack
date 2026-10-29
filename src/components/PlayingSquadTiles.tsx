@@ -5,46 +5,69 @@ import { cn } from '@/lib/utils'
 const tileShellSelected =
   'relative flex w-full flex-col items-center gap-2 rounded-xl border px-2 pb-2.5 pt-3 text-center border-primary/50 bg-primary/[0.08] shadow-sm ring-1 ring-primary/20'
 
+const plainShellSelected =
+  'border-primary/50 bg-primary/[0.08] shadow-sm ring-1 ring-primary/20 font-semibold text-slate-900'
+
 /** Toggle tile for picking squad in the modal (tap to select/deselect). */
 export function SquadPickTile({
   selected,
   name,
   onToggle,
+  /** Avatar grid (default) or name-only row for playing squad modal list. */
+  appearance = 'avatar',
 }: {
   selected: boolean
   name: string
   onToggle: () => void
+  appearance?: 'avatar' | 'plain'
 }) {
+  const plain = appearance === 'plain'
+
   return (
-    <li className="min-w-0">
+    <li className={cn(plain ? 'w-fit max-w-full' : 'min-w-0')}>
       <button
         type="button"
         aria-pressed={selected}
         aria-label={selected ? `Deselect ${name}` : `Select ${name}`}
         className={cn(
-          'relative flex w-full flex-col items-center gap-2 rounded-xl border px-2 pb-2.5 pt-3 text-center transition-all outline-none',
+          'relative flex rounded-xl border transition-all outline-none',
+          plain ? 'w-fit max-w-full' : 'w-full',
           'focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
-          selected
-            ? tileShellSelected
-            : 'border-slate-100 bg-slate-50/70 hover:border-slate-200 hover:bg-slate-50',
+          plain
+            ? cn(
+                'items-center px-3 py-2 text-left text-sm font-medium leading-snug',
+                selected ? plainShellSelected : 'border-slate-100 bg-slate-50/70 hover:border-slate-200 hover:bg-slate-50 text-slate-900',
+              )
+            : cn(
+                'flex-col items-center gap-2 px-2 pb-2.5 pt-3 text-center',
+                selected ? tileShellSelected : 'border-slate-100 bg-slate-50/70 hover:border-slate-200 hover:bg-slate-50',
+              ),
         )}
         onClick={onToggle}
       >
-        {selected && (
+        {!plain && selected && (
           <span className="absolute right-1 top-1 flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm">
             <Check className="size-3" strokeWidth={3} aria-hidden />
           </span>
         )}
+        {!plain && (
+          <span
+            className={cn(
+              'flex size-11 shrink-0 items-center justify-center rounded-full text-[13px] font-bold tracking-tight',
+              selected ? 'bg-primary text-primary-foreground' : 'bg-slate-200/90 text-slate-700',
+            )}
+            aria-hidden
+          >
+            {playerInitials(name)}
+          </span>
+        )}
         <span
           className={cn(
-            'flex size-11 shrink-0 items-center justify-center rounded-full text-[13px] font-bold tracking-tight',
-            selected ? 'bg-primary text-primary-foreground' : 'bg-slate-200/90 text-slate-700',
+            plain
+              ? 'max-w-[min(100%,18rem)] break-words text-left'
+              : 'line-clamp-2 min-h-[2.25rem] w-full px-0.5 text-[13px] font-medium leading-snug text-slate-900',
           )}
-          aria-hidden
         >
-          {playerInitials(name)}
-        </span>
-        <span className="line-clamp-2 min-h-[2.25rem] w-full px-0.5 text-[13px] font-medium leading-snug text-slate-900">
           {name}
         </span>
       </button>

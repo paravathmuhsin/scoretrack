@@ -30,10 +30,8 @@ import {
   Shirt,
   Trophy,
   User,
-  UserMinus,
   UserPlus,
   Users,
-  UserX,
   X,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
@@ -42,6 +40,7 @@ import { toast } from 'sonner'
 import { useAuth } from '../auth/useAuth'
 import { matchFormSelectClass } from '../components/MatchFormCreateFields'
 import { ByesIcon, CricketBatIcon, KeeperGlovesIcon, LegByesIcon } from '../components/CricketDecorIcons'
+import { ModalDialogHeader } from '../components/ModalDialogHeader'
 import { MatchPlayingSquadModal } from '../components/MatchPlayingSquadModal'
 import { SquadSummaryTile } from '../components/PlayingSquadTiles'
 import { SQUAD_SUMMARY_TILE_LIST_CLASS } from '@/lib/playingSquadTiles'
@@ -1568,32 +1567,12 @@ export function ScoreMatchPage() {
             aria-labelledby="overlay-link-title"
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <div className="relative shrink-0 border-b border-slate-100 px-5 pb-4 pt-5">
-              <button
-                type="button"
-                className="absolute top-4 right-4 inline-flex size-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
-                aria-label="Close"
-                onClick={() => setOverlayLinkModalOpen(false)}
-              >
-                <X className="size-4" strokeWidth={2.2} />
-              </button>
-              <div className="flex items-start gap-3 pr-10">
-                <div
-                  className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"
-                  aria-hidden
-                >
-                  <Monitor className="size-5" strokeWidth={2} />
-                </div>
-                <div className="min-w-0 leading-tight">
-                  <h2 id="overlay-link-title" className="text-lg font-bold text-slate-900">
-                    Score overlay
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Add this URL as a browser source in OBS or open it on another screen to show the live scoreboard.
-                  </p>
-                </div>
-              </div>
-            </div>
+            <ModalDialogHeader
+              shrink
+              titleId="overlay-link-title"
+              title="Score overlay"
+              onClose={() => setOverlayLinkModalOpen(false)}
+            />
 
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
               {!match.isPublic && (
@@ -2279,33 +2258,12 @@ export function ScoreMatchPage() {
             aria-labelledby="go-live-confirm-title"
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <div className="relative border-b border-slate-100 px-5 pb-4 pt-5">
-              <button
-                type="button"
-                className="absolute top-4 right-4 inline-flex size-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 disabled:opacity-50"
-                aria-label="Close"
-                disabled={writePending}
-                onClick={() => setGoLiveConfirmOpen(false)}
-              >
-                <X className="size-4" strokeWidth={2.2} />
-              </button>
-              <div className="flex items-start gap-3 pr-10">
-                <div
-                  className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"
-                  aria-hidden
-                >
-                  <PlayCircle className="size-5" strokeWidth={2} />
-                </div>
-                <div className="min-w-0 leading-tight">
-                  <h2 id="go-live-confirm-title" className="text-lg font-bold text-slate-900">
-                    Start match?
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Confirm toss, captains, keepers, openers, and opening bowler before going live.
-                  </p>
-                </div>
-              </div>
-            </div>
+            <ModalDialogHeader
+              titleId="go-live-confirm-title"
+              title="Start match?"
+              closeDisabled={writePending}
+              onClose={() => setGoLiveConfirmOpen(false)}
+            />
 
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
               <div className="space-y-4">
@@ -2421,37 +2379,13 @@ export function ScoreMatchPage() {
             aria-labelledby="end-match-title"
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <div className="relative shrink-0 border-b border-slate-100 px-5 pb-4 pt-5">
-              <button
-                type="button"
-                className={cn(
-                  'absolute top-4 right-4 inline-flex size-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800',
-                  writePending && 'pointer-events-none opacity-40',
-                )}
-                aria-label="Close"
-                disabled={writePending}
-                onClick={() => dismissEndMatchModal()}
-              >
-                <X className="size-4" strokeWidth={2.2} />
-              </button>
-              <div className="flex items-start gap-3 pr-10">
-                <div
-                  className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"
-                  aria-hidden
-                >
-                  <CircleMinus className="size-5" strokeWidth={2} />
-                </div>
-                <div className="min-w-0 leading-tight">
-                  <h2 id="end-match-title" className="text-lg font-bold text-slate-900">
-                    End match?
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Scoring will be locked. Choose how this counts for the tournament table. A reason is required and
-                    saved on the result.
-                  </p>
-                </div>
-              </div>
-            </div>
+            <ModalDialogHeader
+              shrink
+              titleId="end-match-title"
+              title="End match?"
+              closeDisabled={writePending}
+              onClose={() => dismissEndMatchModal()}
+            />
 
             <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-4">
               <p className="text-sm font-semibold text-slate-800">Match status</p>
@@ -2848,24 +2782,7 @@ export function ScoreMatchPage() {
             aria-labelledby="start-second-innings-title"
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <div className="shrink-0 border-b border-slate-100 px-5 pb-4 pt-5">
-              <div className="flex items-start gap-3">
-                <div
-                  className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
-                  aria-hidden
-                >
-                  <PlayCircle className="size-5" strokeWidth={2} />
-                </div>
-                <div className="min-w-0 leading-tight">
-                  <h2 id="start-second-innings-title" className="text-lg font-bold text-slate-900">
-                    Start second innings
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Set the opening pair and bowler, then confirm to begin the chase.
-                  </p>
-                </div>
-              </div>
-            </div>
+            <ModalDialogHeader shrink titleId="start-second-innings-title" title="Start second innings" />
 
             <form className="flex min-h-0 flex-1 flex-col" onSubmit={startSecond}>
               <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
@@ -3032,25 +2949,7 @@ export function ScoreMatchPage() {
             aria-labelledby="next-bowler-modal-title"
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <div className="relative shrink-0 border-b border-slate-100 px-5 pb-4 pt-5">
-              <div className="flex items-start gap-3">
-                <div
-                  className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
-                  aria-hidden
-                >
-                  <Shirt className="size-5" strokeWidth={2} />
-                </div>
-                <div className="min-w-0 leading-tight">
-                  <h2 id="next-bowler-modal-title" className="text-lg font-bold text-slate-900">
-                    New over — choose bowler
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    End of over. Pick who bowls next. Limit: {cfg.oversPerBowler} overs (
-                    {maxBallsPerBowlerPerInnings(cfg)} legal balls) per bowler per innings.
-                  </p>
-                </div>
-              </div>
-            </div>
+            <ModalDialogHeader shrink titleId="next-bowler-modal-title" title="New over — choose bowler" />
 
             <form className="flex min-h-0 flex-1 flex-col" onSubmit={confirmNextBowler}>
               <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
@@ -3283,33 +3182,13 @@ export function ScoreMatchPage() {
             aria-labelledby="overthrow-title"
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <div className="relative shrink-0 border-b border-slate-100 px-5 pb-4 pt-5">
-              <button
-                type="button"
-                className="absolute right-4 top-4 inline-flex size-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
-                aria-label="Close"
-                disabled={writePending}
-                onClick={() => setOverthrowOpen(false)}
-              >
-                <X className="size-4" strokeWidth={2.2} />
-              </button>
-              <div className="flex items-start gap-3 pr-10">
-                <div
-                  className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
-                  aria-hidden
-                >
-                  <Plus className="size-5" strokeWidth={2} />
-                </div>
-                <div className="min-w-0 leading-tight">
-                  <h2 id="overthrow-title" className="text-lg font-bold text-slate-900">
-                    Overthrow runs
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Extra runs from overthrows on the same ball (added to the total, no extra delivery).
-                  </p>
-                </div>
-              </div>
-            </div>
+            <ModalDialogHeader
+              shrink
+              titleId="overthrow-title"
+              title="Overthrow runs"
+              closeDisabled={writePending}
+              onClose={() => setOverthrowOpen(false)}
+            />
 
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
               <div className="space-y-2">
@@ -3384,34 +3263,13 @@ export function ScoreMatchPage() {
               aria-labelledby="fall-wicket-title"
               onMouseDown={(e) => e.stopPropagation()}
             >
-              <div className="relative shrink-0 border-b border-slate-100 px-5 pb-4 pt-5">
-                <button
-                  type="button"
-                  className="absolute top-4 right-4 inline-flex size-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
-                  aria-label="Close"
-                  disabled={writePending}
-                  onClick={closeWicketModal}
-                >
-                  <X className="size-4" strokeWidth={2.2} />
-                </button>
-                <div className="flex items-start gap-3 pr-10">
-                  <div
-                    className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
-                    aria-hidden
-                  >
-                    <UserX className="size-5" strokeWidth={2} />
-                  </div>
-                  <div className="min-w-0 leading-tight">
-                    <h2 id="fall-wicket-title" className="text-lg font-bold text-slate-900">
-                      Fall of wicket
-                    </h2>
-                    <p className="mt-1 text-sm text-slate-500">
-                      The striker is dismissed unless you choose Run out (then pick striker or non-striker). Who
-                      helped? applies for catch, run out, and stumping only.
-                    </p>
-                  </div>
-                </div>
-              </div>
+              <ModalDialogHeader
+                shrink
+                titleId="fall-wicket-title"
+                title="Fall of wicket"
+                closeDisabled={writePending}
+                onClose={closeWicketModal}
+              />
 
               <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
                 {pendingRunsFromPad !== null && (
@@ -3679,33 +3537,13 @@ export function ScoreMatchPage() {
               aria-labelledby="retired-hurt-title"
               onMouseDown={(e) => e.stopPropagation()}
             >
-              <div className="relative shrink-0 border-b border-slate-100 px-5 pb-4 pt-5">
-                <button
-                  type="button"
-                  className="absolute top-4 right-4 inline-flex size-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
-                  aria-label="Close"
-                  disabled={writePending}
-                  onClick={closeWicketModal}
-                >
-                  <X className="size-4" strokeWidth={2.2} />
-                </button>
-                <div className="flex items-start gap-3 pr-10">
-                  <div
-                    className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
-                    aria-hidden
-                  >
-                    <UserMinus className="size-5" strokeWidth={2} />
-                  </div>
-                  <div className="min-w-0 leading-tight">
-                    <h2 id="retired-hurt-title" className="text-lg font-bold text-slate-900">
-                      Retired hurt
-                    </h2>
-                    <p className="mt-1 text-sm text-slate-500">
-                      No wicket, no ball bowled — player may bat again later this innings.
-                    </p>
-                  </div>
-                </div>
-              </div>
+              <ModalDialogHeader
+                shrink
+                titleId="retired-hurt-title"
+                title="Retired hurt"
+                closeDisabled={writePending}
+                onClose={closeWicketModal}
+              />
 
               <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
                 <div
@@ -3950,22 +3788,7 @@ export function ScoreMatchPage() {
             aria-labelledby="innings-break-title"
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <div className="shrink-0 border-b border-slate-100 px-5 pb-4 pt-5">
-              <div className="flex items-start gap-3">
-                <div
-                  className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
-                  aria-hidden
-                >
-                  <PlayCircle className="size-5" strokeWidth={2} />
-                </div>
-                <div className="min-w-0 leading-tight">
-                  <h2 id="innings-break-title" className="text-lg font-bold text-slate-900">
-                    First innings complete
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-500">Start the second innings when you are ready.</p>
-                </div>
-              </div>
-            </div>
+            <ModalDialogHeader shrink titleId="innings-break-title" title="First innings complete" />
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
               <p className="text-sm leading-relaxed text-slate-700">
                 <strong className="font-semibold text-slate-900">{inningsBreakPopup.teamName}</strong> need{' '}
@@ -3997,22 +3820,7 @@ export function ScoreMatchPage() {
             aria-labelledby="match-complete-popup-title"
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <div className="relative shrink-0 border-b border-slate-100 px-5 pb-4 pt-5">
-              <div className="flex items-start gap-3">
-                <div
-                  className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
-                  aria-hidden
-                >
-                  <Trophy className="size-5" strokeWidth={2} />
-                </div>
-                <div className="min-w-0 leading-tight">
-                  <h2 id="match-complete-popup-title" className="text-lg font-bold text-slate-900">
-                    Match over
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-500">Review the result, then save or undo.</p>
-                </div>
-              </div>
-            </div>
+            <ModalDialogHeader shrink titleId="match-complete-popup-title" title="Match over" />
 
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
               <p className="text-base font-semibold leading-snug text-slate-900">{matchCompletePopup.summary}</p>
@@ -4085,33 +3893,11 @@ export function ScoreMatchPage() {
             aria-labelledby="end-innings-title"
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <div className="relative border-b border-slate-100 px-5 pb-4 pt-5">
-              <button
-                type="button"
-                className="absolute top-4 right-4 inline-flex size-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
-                aria-label="Close"
-                onClick={() => setEndInningsOpen(false)}
-              >
-                <X className="size-4" strokeWidth={2.2} />
-              </button>
-              <div className="flex items-start gap-3 pr-10">
-                <div
-                  className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"
-                  aria-hidden
-                >
-                  <Flag className="size-5" strokeWidth={2} />
-                </div>
-                <div className="min-w-0 leading-tight">
-                  <h2 id="end-innings-title" className="text-lg font-bold text-slate-900">
-                    End innings
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Close the {state.activeInnings === 1 ? 'first' : 'second'} innings now (before all out or the overs
-                    limit).
-                  </p>
-                </div>
-              </div>
-            </div>
+            <ModalDialogHeader
+              titleId="end-innings-title"
+              title="End innings"
+              onClose={() => setEndInningsOpen(false)}
+            />
 
             <div className="px-5 pb-5 pt-4">
               <p className="text-sm leading-relaxed text-slate-600">

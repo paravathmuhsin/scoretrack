@@ -26,10 +26,26 @@ function uniqByUid(arrays: DirectoryHit[][], maxResults: number): DirectoryHit[]
   return out
 }
 
-async function queryNamePrefix(db: ReturnType<typeof getDb>, term: string, lim: number): Promise<DirectoryHit[]> {
+async function queryDisplayNamePrefix(
+  db: ReturnType<typeof getDb>,
+  term: string,
+  lim: number,
+): Promise<DirectoryHit[]> {
   const qy = query(
     collection(db, 'directoryUsers'),
     orderBy('displayNameLower'),
+    startAt(term),
+    endAt(`${term}\uf8ff`),
+    limit(lim),
+  )
+  const snap = await getDocs(qy)
+  return snap.docs.map((d) => ({ uid: d.id, ...(d.data() as DirectoryUserDoc) }))
+}
+
+async function queryFullNamePrefix(db: ReturnType<typeof getDb>, term: string, lim: number): Promise<DirectoryHit[]> {
+  const qy = query(
+    collection(db, 'directoryUsers'),
+    orderBy('fullNameLower'),
     startAt(term),
     endAt(`${term}\uf8ff`),
     limit(lim),
@@ -63,7 +79,7 @@ async function queryPhonePrefix(db: ReturnType<typeof getDb>, digits: string, li
 }
 
 /**
- * Prefix search on display name, email, or phone digits (Firestore range queries).
+ * Prefix search on display name, full name, email, or phone digits (Firestore range queries).
  */
 export async function searchDirectoryUsers(raw: string, maxResults = 25): Promise<DirectoryHit[]> {
   const trimmed = raw.trim()
@@ -80,7 +96,8 @@ export async function searchDirectoryUsers(raw: string, maxResults = 25): Promis
 
   const tasks: Promise<DirectoryHit[]>[] = []
   if (textOk) {
-    tasks.push(queryNamePrefix(db, lower, perQuery))
+    tasks.push(queryDisplayNamePrefix(db, lower, perQuery))
+    tasks.push(queryFullNamePrefix(db, lower, perQuery))
     tasks.push(queryEmailPrefix(db, lower, perQuery))
   }
   if (phoneOk) {

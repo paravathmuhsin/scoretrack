@@ -1,0 +1,65 @@
+import type { UserNotificationDoc } from '@/types/models'
+import { ts } from './timestamp'
+
+const base = { createdAt: ts('2026-04-01T09:00:00Z') }
+
+export const notificationFixtures: Record<UserNotificationDoc['type'], UserNotificationDoc> = {
+  ownership_transfer: {
+    type: 'ownership_transfer',
+    kind: 'transfer_received',
+    transferId: 'xfer-1',
+    teamId: 'team-1',
+    teamName: 'North Stars',
+    otherUid: 'other-user',
+    otherDisplayName: 'Sam Sharma',
+    ...base,
+  },
+  team_co_owner: {
+    type: 'team_co_owner',
+    kind: 'co_owner_assigned',
+    teamId: 'team-1',
+    teamName: 'North Stars',
+    primaryOwnerUid: 'owner-1',
+    otherUid: 'co-1',
+    otherDisplayName: 'Jordan Patel',
+    ...base,
+  },
+  team_roster: {
+    type: 'team_roster',
+    kind: 'removed_from_team',
+    teamId: 'team-1',
+    teamName: 'North Stars',
+    primaryOwnerUid: 'owner-1',
+    actorUid: 'owner-1',
+    actorDisplayName: 'Alex Kohli',
+    ...base,
+  },
+  match_participation: {
+    type: 'match_participation',
+    kind: 'invite_received',
+    inviteId: 'inv-1',
+    matchId: 'match-demo',
+    teamId: 'team-1',
+    teamName: 'North Stars',
+    teamNumber: 42,
+    side: 'home',
+    otherUid: 'creator-1',
+    otherDisplayName: 'Match organiser',
+    scheduledAt: ts('2026-04-12T14:00:00Z'),
+    ...base,
+  },
+  tournament_team_link: {
+    type: 'tournament_team_link',
+    kind: 'link_received',
+    inviteId: 'link-1',
+    tournamentId: 'tournament-demo',
+    tournamentName: 'Summer Premier League',
+    linkedTeamId: 'lt-1',
+    teamId: 'team-1',
+    teamName: 'North Stars',
+    teamNumber: 42,
+    otherUid: 'org-1',
+    otherDisplayName: 'Tournament admin',
+    ...base,
+  },
+}

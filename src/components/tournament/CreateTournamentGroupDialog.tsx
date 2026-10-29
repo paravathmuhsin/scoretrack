@@ -1,5 +1,5 @@
 import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore'
-import { LayoutGrid, X } from 'lucide-react'
+import { ModalDialogHeader } from '@/components/ModalDialogHeader'
 import { useEffect, useId, useMemo, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { BtnPendingLabel } from '../Spinner'
@@ -142,32 +142,12 @@ export function CreateTournamentGroupDialog({
         aria-labelledby={`${fieldId}-group-dialog-title`}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="relative shrink-0 border-b border-slate-100 px-5 pb-4 pt-5">
-          <button
-            type="button"
-            className="absolute right-4 top-4 inline-flex size-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
-            aria-label="Close"
-            onClick={() => close()}
-          >
-            <X className="size-4" strokeWidth={2.2} />
-          </button>
-          <div className="flex items-start gap-3 pr-10">
-            <div
-              className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
-              aria-hidden
-            >
-              <LayoutGrid className="size-5" strokeWidth={2} />
-            </div>
-            <div className="min-w-0 leading-tight">
-              <h2 id={`${fieldId}-group-dialog-title`} className="text-lg font-bold text-slate-900">
-                {isEdit ? 'Edit group' : 'Create group'}
-              </h2>
-              <p className="mt-1 text-sm text-slate-600">
-                {isEdit ? 'Update this pool’s name and squads.' : 'Name the pool and add squads.'}
-              </p>
-            </div>
-          </div>
-        </div>
+        <ModalDialogHeader
+          shrink
+          titleId={`${fieldId}-group-dialog-title`}
+          title={isEdit ? 'Edit group' : 'Create group'}
+          onClose={() => close()}
+        />
 
         <form noValidate onSubmit={(e) => void handleSubmit(e)} className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden px-5 pt-2 pb-4">

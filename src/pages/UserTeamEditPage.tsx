@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { v4 as uuidv4 } from 'uuid'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
+import { ModalDialogHeader } from '../components/ModalDialogHeader'
 import { TransferOwnershipDialogContent } from '../components/TransferOwnershipDialogContent'
 import { UserTeamForm } from '../components/UserTeamForm'
 import type { DirectoryHit } from '../lib/directorySearch'
@@ -280,32 +281,12 @@ export function UserTeamEditPage() {
             aria-labelledby="team-invite-share-title"
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <div className="relative shrink-0 border-b border-slate-100 px-5 pb-4 pt-5">
-              <button
-                type="button"
-                className="absolute top-4 right-4 inline-flex size-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
-                aria-label="Close"
-                onClick={() => setShareModalOpen(false)}
-              >
-                <X className="size-4" strokeWidth={2.2} />
-              </button>
-              <div className="flex items-start gap-3 pr-10">
-                <div
-                  className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"
-                  aria-hidden
-                >
-                  <Share2 className="size-5" strokeWidth={2} />
-                </div>
-                <div className="min-w-0 leading-tight">
-                  <h2 id="team-invite-share-title" className="text-lg font-bold text-slate-900">
-                    Invite players
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Anyone with this link can sign in and join your squad.
-                  </p>
-                </div>
-              </div>
-            </div>
+            <ModalDialogHeader
+              shrink
+              titleId="team-invite-share-title"
+              title="Invite players"
+              onClose={() => setShareModalOpen(false)}
+            />
 
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
               {!team.joinInviteToken ? (

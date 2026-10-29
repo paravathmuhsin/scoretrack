@@ -1,4 +1,4 @@
-import { Trash2, X } from 'lucide-react'
+import { ModalDialogHeader } from '@/components/ModalDialogHeader'
 import { useEffect, useId } from 'react'
 import { BtnPendingLabel } from '../Spinner'
 import { tournamentModalFooterOutlineButtonClass } from './tournamentModalFooterButtons'
@@ -52,27 +52,12 @@ export function DeleteTournamentDialog({
         aria-describedby={`${fieldId}-delete-tournament-desc`}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="relative shrink-0 border-b border-slate-100 px-5 pb-4 pt-5">
-          <button
-            type="button"
-            className="absolute right-4 top-4 inline-flex size-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
-            aria-label="Close"
-            onClick={() => onClose()}
-          >
-            <X className="size-4" strokeWidth={2.2} aria-hidden />
-          </button>
-          <div className="flex flex-col items-center px-2 text-center">
-            <div
-              className="mb-3 flex size-14 shrink-0 items-center justify-center rounded-full bg-rose-100 text-primary"
-              aria-hidden
-            >
-              <Trash2 className="size-7" strokeWidth={2.2} />
-            </div>
-            <h2 id={`${fieldId}-delete-tournament-title`} className="text-lg font-bold text-slate-900">
-              Delete this tournament?
-            </h2>
-          </div>
-        </div>
+        <ModalDialogHeader
+          shrink
+          titleId={`${fieldId}-delete-tournament-title`}
+          title="Delete this tournament?"
+          onClose={() => onClose()}
+        />
 
         <div
           id={`${fieldId}-delete-tournament-desc`}

@@ -572,6 +572,9 @@ export interface UserProfileDoc {
 export interface DirectoryUserDoc {
   displayName: string
   displayNameLower: string
+  /** Profile full name; indexed for directory prefix search. */
+  fullName?: string | null
+  fullNameLower?: string | null
   email?: string | null
   emailLower?: string | null
   /** Digits-only normalized phone for prefix search */

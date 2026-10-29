@@ -32,6 +32,18 @@ cp .env.staging.example .env.staging
 # Fill in VITE_FIREBASE_* from the staging web app config in Firebase Console
 ```
 
+### Bulk test users (staging / test Firebase only)
+
+**Not for production.** Script only runs when `.env.staging` targets **`scoretrack-staging`** and you pass `--confirm-staging` (included in the yarn script below).
+
+After Email/Password Auth is enabled on **scoretrack-staging**:
+
+```bash
+yarn seed:staging:test-users -- --count 100 --password 'TestPass123!'
+```
+
+Creates `test1@example.com` … with display names `Test 1`, …, plus `users/{uid}` and `directoryUsers/{uid}` for directory search. Re-runs skip existing emails.
+
 ### Deploy commands
 
 | Command | Target |

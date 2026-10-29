@@ -1,7 +1,7 @@
-import { Search, Users, X } from 'lucide-react'
+import { Search, X } from 'lucide-react'
+import { ModalDialogHeader } from '@/components/ModalDialogHeader'
 import { useMemo, useState } from 'react'
 import type { RosterPlayer } from '../types/models'
-import { SQUAD_TILE_GRID_CLASS } from '@/lib/playingSquadTiles'
 import { SquadPickTile } from './PlayingSquadTiles'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -64,38 +64,22 @@ export function MatchPlayingSquadModal({
         aria-labelledby="match-squad-modal-title"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="relative border-b border-slate-100 px-5 pb-4 pt-5">
-          <button
-            type="button"
-            className="absolute top-4 right-4 inline-flex size-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
-            aria-label="Close"
-            onClick={onClose}
-          >
-            <X className="size-4" strokeWidth={2.2} />
-          </button>
-          <div className="flex items-start gap-3 pr-10">
-            <div
-              className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"
-              aria-hidden
-            >
-              <Users className="size-5" strokeWidth={2} />
-            </div>
-            <div className="min-w-0 leading-tight">
-              <h2 id="match-squad-modal-title" className="text-lg font-bold text-slate-900">
-                {teamName} — playing squad
-              </h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Select up to <strong>{maxCount}</strong> players from this roster for the match.
+        <ModalDialogHeader
+          titleId="match-squad-modal-title"
+          title={`${teamName} — playing squad`}
+          onClose={onClose}
+        />
+
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="shrink-0 space-y-2 border-b border-slate-100 px-5 py-3">
+            <div className="flex items-baseline justify-between gap-3 text-sm">
+              <p className="min-w-0 text-slate-600">
+                Select up to <strong className="font-semibold text-slate-800">{maxCount}</strong> players.
               </p>
-              <p className="mt-2 text-sm font-semibold text-primary">
+              <p className="shrink-0 font-semibold text-primary">
                 Selected {draft.length}/{maxCount}
               </p>
             </div>
-          </div>
-        </div>
-
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="shrink-0 border-b border-slate-100 px-5 py-3">
             <div
               className={cn(
                 'flex h-11 items-center gap-2 rounded-xl border-2 border-primary bg-white px-3 shadow-sm transition-shadow',
@@ -138,12 +122,13 @@ export function MatchPlayingSquadModal({
                   : `No players match “${searchQuery.trim()}”. Try another name or clear search.`}
               </p>
             ) : (
-              <ul className={SQUAD_TILE_GRID_CLASS}>
+              <ul className="flex flex-wrap gap-2">
                 {filteredPlayers.map((p) => {
                   const selected = draft.includes(p.playerId)
                   return (
                     <SquadPickTile
                       key={p.playerId}
+                      appearance="plain"
                       selected={selected}
                       name={p.name}
                       onToggle={() => {
